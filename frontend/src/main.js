@@ -84,6 +84,27 @@ const hud = new HUD({
     if (player) {
       player.requestLock();
     }
+  },
+  onCreateRoom: (username, mode) => {
+    gameNetwork.createRoom(username, mode);
+  },
+  onJoinRoom: (code, username) => {
+    gameNetwork.joinRoom(code, username);
+  },
+  onLeaveRoom: () => {
+    gameNetwork.leaveRoom();
+  },
+  onSetGameMode: (mode) => {
+    gameNetwork.setGameMode(mode);
+  },
+  onSetTeam: (team) => {
+    gameNetwork.setTeam(team);
+  },
+  onStartMatch: () => {
+    gameNetwork.startMatch();
+  },
+  onReturnToLobby: () => {
+    gameNetwork.returnToLobby();
   }
 });
 
@@ -130,6 +151,7 @@ gameNetwork.onPlayerLeft = (leftData) => {
 
 gameNetwork.onError = (errMsg) => {
   console.warn(`[Multiplayer] Error: ${errMsg}`);
+  hud.showError(errMsg);
 };
 
 // -------------------------------------------------------------
@@ -206,6 +228,55 @@ gameNetwork.onPlayerRespawned = (data) => {
 
 gameNetwork.onKillFeed = (data) => {
   hud.addKillFeedEntry(data.killerName, data.victimName, data.weapon);
+};
+
+// -------------------------------------------------------------
+// 5c. Chunk 4: Private Rooms, TDM/FFA Matches & Spawn Protection
+// -------------------------------------------------------------
+gameNetwork.onRoomState = (roomState) => {
+  hud.updateRoomState(roomState, gameNetwork.playerId);
+  if (roomState.players) {
+    roomState.players.forEach((p) => {
+      if (p.id !== gameNetwork.playerId) {
+        remotePlayerManager.setPlayerTeam(p.id, p.team);
+      }
+    });
+  }
+};
+
+gameNetwork.onMatchStarted = (data) => {
+  console.log(`[Match] Started in room ${data.roomCode} (${data.mode})`);
+  hud.setPaused(false);
+  if (player) {
+    player.spawnAt(data.x, data.y, data.z, data.yaw);
+    player.requestLock();
+  }
+  hud.updateHealth(100);
+  if (weapon) {
+    weapon.selectWeapon(0);
+  }
+};
+
+gameNetwork.onScoreUpdate = (data) => {
+  hud.updateScore(data.redScore, data.blueScore, data.kills, data.deaths);
+};
+
+gameNetwork.onMatchEnded = (data) => {
+  console.log(`[Match] Concluded in room ${data.roomCode} - Winner: ${data.winner}`);
+  if (player) {
+    player.exitLock();
+  }
+  hud.showMatchEnded(data.winner, data.reason, data.redScore, data.blueScore, data.leaderboard);
+};
+
+gameNetwork.onSpawnProtection = (data) => {
+  if (data.playerId === gameNetwork.playerId) {
+    if (player && data.active) {
+      player.applySpawnProtection(data.durationMs || 5000);
+    }
+  } else {
+    remotePlayerManager.setSpawnProtection(data.playerId, data.durationMs || 5000, data.active);
+  }
 };
 
 // -------------------------------------------------------------

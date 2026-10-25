@@ -252,6 +252,28 @@ export class RemotePlayer {
     }
   }
 
+  setTeam(team) {
+    this.team = team;
+    let color = 0x1d4ed8;
+    if (team === 'RED') color = 0xd92030;
+    else if (team === 'BLUE') color = 0x0077ff;
+    else if (team === 'FFA') color = 0xe67e00;
+
+    if (this.torso && this.torso.material) {
+      this.torso.material.color.setHex(color);
+    }
+  }
+
+  setSpawnProtection(durationMs = 5000, active = true) {
+    if (this.shieldTimeout) clearTimeout(this.shieldTimeout);
+    this.spawnShield.visible = active;
+    if (active && durationMs > 0) {
+      this.shieldTimeout = setTimeout(() => {
+        this.spawnShield.visible = false;
+      }, durationMs);
+    }
+  }
+
   respawn(x, y, z, yaw) {
     this.targetPos.set(x, y, z);
     this.group.position.set(x, y, z);
@@ -259,11 +281,8 @@ export class RemotePlayer {
     this.group.rotation.set(0, yaw, 0);
     this.setDead(false);
 
-    // Show temporary spawn shield for 2 seconds
-    this.spawnShield.visible = true;
-    setTimeout(() => {
-      this.spawnShield.visible = false;
-    }, 2000);
+    // Show temporary 5-second spawn shield (Mandatory Requirement B)
+    this.setSpawnProtection(5000, true);
   }
 
   updateState(moveData) {

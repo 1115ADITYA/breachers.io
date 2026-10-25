@@ -70,6 +70,27 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             case ClientMessage.SwitchWeapon switchWeapon -> {
                 sessionManager.handleSwitchWeapon(session.getId(), switchWeapon.weapon());
             }
+            case ClientMessage.CreateRoom createRoom -> {
+                sessionManager.createRoom(session, createRoom.username(), createRoom.mode());
+            }
+            case ClientMessage.JoinRoom joinRoom -> {
+                sessionManager.joinRoom(session, joinRoom.roomCode(), joinRoom.username());
+            }
+            case ClientMessage.LeaveRoom leaveRoom -> {
+                sessionManager.leaveRoom(session.getId());
+            }
+            case ClientMessage.SetGameMode setGameMode -> {
+                sessionManager.setGameMode(session.getId(), setGameMode.mode());
+            }
+            case ClientMessage.SetTeam setTeam -> {
+                sessionManager.setTeam(session.getId(), setTeam.team());
+            }
+            case ClientMessage.StartMatch startMatch -> {
+                sessionManager.startMatch(session.getId());
+            }
+            case ClientMessage.ReturnToLobby returnToLobby -> {
+                sessionManager.returnToLobby(session.getId());
+            }
         }
     }
 

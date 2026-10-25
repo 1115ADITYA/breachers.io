@@ -214,15 +214,95 @@ node scratch/test-knife-and-rifle.mjs
 1. Ensure the Spring Boot backend (`:8081`) and Vite frontend (`:5173`) are running.
 2. Open Browser Window 1 at `http://localhost:5173`:
    - Enter callsign `Striker_Alpha`.
-   - Click **DEPLOY TO COMBAT**.
+   - Click **QUICK PLAY** (or create a room).
 3. Open Browser Window 2 (or Incognito) at `http://localhost:5173`:
    - Enter callsign `Ghost_Beta`.
-   - Click **DEPLOY TO COMBAT**.
+   - Click **QUICK PLAY**.
 4. Test Combat Interactions:
    - Walk both players into visual contact in the Container Yard.
    - Switch weapons with `1`, `2`, `3`.
    - Fire at each other: observe real-time health bar depletion, red damage screen vignette on the victim, and hitmarkers/floating damage numbers on the shooter.
    - Inflict lethal damage: observe victim elimination, death overlay with 3s countdown, and top-right kill-feed entry.
-   - Verify victim respawns with 100 HP, 2s glowing spawn protection shield, and full primary ammunition restored.
+   - Verify victim respawns with 100 HP, 5s glowing spawn protection shield, and full primary ammunition restored.
+
+---
+
+## Chunk 4 — Private Rooms, Team Deathmatch (TDM) & Free-For-All (FFA)
+
+### 1. Private Room System
+- **Create Room**: Generates an isolated room with a unique 6-character alphanumeric room code (e.g., `LBHAF5`). The creator is automatically designated host and assigned to the RED team.
+- **Join Room**: Players can enter any 6-character code to join the private session. Server checks for room existence, non-empty codes, and caps room capacity at 10 players.
+- **Lobby Management & Host Migration**: Disconnects or host leaves trigger server-side host re-assignment to the next remaining player. When all players leave, the room is safely garbage-collected from in-memory storage.
+- **Copy Room Code**: One-click tactical copy button with visual `COPIED!` status feedback.
+- **Strict Room Isolation**: All movement updates, weapon shots, combat damage, health updates, and match scores are routed exclusively to players in the same room.
+
+### 2. Game Modes: TDM & Free-For-All
+- **Team Deathmatch (TDM)**:
+  - 2 balanced teams: **RED** and **BLUE** (max 5 players per team).
+  - Kill limit: **30 team kills**; Match duration: **10 minutes** (600 seconds).
+  - Server-enforced **friendly fire rejection**: Teammates cannot damage each other.
+  - Team switching with server-side capacity validation.
+- **Free For All (FFA)**:
+  - Solo competition (up to 10 players).
+  - Kill limit: **20 individual kills**; Match duration: **10 minutes** (600 seconds).
+  - Individual scoreboards and rankings.
+
+### 3. Dedicated Team Spawns & 5-Second Spawn Protection (Mandatory Requirements A & B)
+- **Separate Team Spawn Zones**:
+  - **Red Team Spawns**: Confined exclusively to West sector ($x \le -44.0\text{ m}$).
+  - **Blue Team Spawns**: Confined exclusively to East sector ($x \ge 44.0\text{ m}$).
+  - **FFA Neutral Spawns**: Distributed centrally across open cover lanes ($|x| \le 35.0\text{ m}$).
+  - Server selects safest candidate spawn point furthest from active enemies to prevent spawn camping.
+- **5-Second Spawn Protection**:
+  - Applied automatically on initial match spawn and every 3-second respawn.
+  - **Offensive Lock**: Protected player cannot fire firearms, attack with knife, or deal damage to opponents.
+  - **Invulnerability**: Protected player cannot take damage from any enemy attacks.
+  - Reloading and weapon switching remain available.
+  - HUD displays a glowing shield icon and countdown banner (`5.0s ... 0.0s`), while remote peers display an ethereal blue protective shield.
+
+### 4. Running Chunk 4 Automated Tests
+```powershell
+# Maven test suite (25 tests covering rooms, spawns, 5s protection, combat, isolation)
+cd backend
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-26.0.2"
+.\mvnw.cmd test
+
+# Frontend production bundle validation
+cd ../frontend
+npm run build
+
+# Node E2E multi-client automated test (Room creation, join, TDM match, 5s protection, kill, respawn, lobby return)
+node ../scratch/test-chunk4-e2e.mjs
+
+# Node rules test (Friendly-fire rejection, host migration, FFA neutral spawns)
+node ../scratch/test-chunk4-tdm-ffa-rules.mjs
+```
+
+### 5. Steps to Test Private Rooms with Two Browser Windows
+1. Ensure the Spring Boot backend (`http://localhost:8081`) and Vite frontend (`http://localhost:5173`) are running.
+2. **Browser Window 1 (Host)**:
+   - Navigate to `http://localhost:5173`.
+   - Enter callsign `AlphaLeader`.
+   - Click **CREATE PRIVATE ROOM**.
+   - Note the 6-character room code (e.g., `ABC123`) and click **COPY**.
+   - Observe Host status badge, selected mode (`TDM (30)`), and Red team roster card.
+3. **Browser Window 2 (Peer / Incognito)**:
+   - Navigate to `http://localhost:5173`.
+   - Enter callsign `BravoGhost`.
+   - Paste the 6-character code into the room code input and click **JOIN ROOM**.
+   - Observe automatic team balancing placing `BravoGhost` onto **BLUE TEAM**.
+4. **Host Starts Match**:
+   - In Browser 1, click **START MATCH**.
+   - Both browser screens transition instantly into first-person 3D gameplay.
+   - Notice AlphaLeader spawned at West Red base ($x \le -44$) and BravoGhost spawned at East Blue base ($x \ge 44$).
+   - Both players see the **SPAWN PROTECTION ACTIVE (5.0s)** banner; attempts to fire while shielded are rejected.
+   - Top center scoreboard bar displays `RED 0` vs `0 BLUE` and 10-minute timer countdown.
+5. **Combat & Elimination**:
+   - After 5 seconds, shield expires and weapon crosshairs unlock.
+   - Fire at opponent: notice friendly fire disabled if on same team, and enemy damage registering.
+   - Once eliminated, death overlay displays a 3s countdown, score bar updates (`RED 1` vs `0 BLUE`), and eliminated player respawns at their designated team spawn with a renewed 5s shield!
+6. **Return to Lobby**:
+   - Host clicks **RETURN TO LOBBY** (or upon match conclusion); both players return seamlessly to the tactical lobby ready for the next round without refreshing.
+
 
 

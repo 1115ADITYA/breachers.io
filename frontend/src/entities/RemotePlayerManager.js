@@ -54,6 +54,20 @@ export class RemotePlayerManager {
     }
   }
 
+  setSpawnProtection(playerId, durationMs = 5000, active = true) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.setSpawnProtection(durationMs, active);
+    }
+  }
+
+  setPlayerTeam(playerId, team) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.setTeam(team);
+    }
+  }
+
   removePlayer(playerId) {
     const player = this.players.get(playerId);
     if (player) {

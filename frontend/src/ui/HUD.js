@@ -1,11 +1,20 @@
 /**
  * HUD
  * Tactical FPS heads-up display managing crosshairs, hitmarkers, health,
- * weapon slots, ammo counters, kill feed, damage vignette, and death/respawn modal.
+ * weapon slots, ammo counters, kill feed, damage vignette, 5-second spawn shield,
+ * private room lobby, match scoreboard, and match-end victory screen.
  */
 export class HUD {
   constructor(options = {}) {
     this.onPlayClick = options.onPlayClick || null;
+    this.onCreateRoom = options.onCreateRoom || null;
+    this.onJoinRoom = options.onJoinRoom || null;
+    this.onLeaveRoom = options.onLeaveRoom || null;
+    this.onSetGameMode = options.onSetGameMode || null;
+    this.onSetTeam = options.onSetTeam || null;
+    this.onStartMatch = options.onStartMatch || null;
+    this.onReturnToLobby = options.onReturnToLobby || null;
+
     this.container = document.getElementById('hud-overlay');
 
     // Default username generator
@@ -15,6 +24,8 @@ export class HUD {
     this.hitmarkerTimeout = null;
     this.vignetteTimeout = null;
     this.deathCountdownInterval = null;
+    this.currentRoomState = null;
+    this.localPlayerId = null;
 
     this.initHUD();
   }
@@ -44,14 +55,34 @@ export class HUD {
       <!-- Floating Damage Numbers Container -->
       <div id="damage-numbers-layer"></div>
 
-      <!-- Top Header / Sector & Multiplayer Session Info -->
+      <!-- Top Header / Sector & Match Score Bar -->
       <header class="hud-top">
         <div class="arena-tag">
           <span class="arena-badge">ARENA</span>
           <span class="arena-name">CONTAINER YARD — SECTOR 04</span>
         </div>
-        
+
+        <!-- Center Match Scoreboard Bar (Visible during match) -->
+        <div id="match-score-bar" class="match-score-bar hidden">
+          <div id="score-team-red" class="team-score red">
+            <span class="team-label">RED</span>
+            <span id="score-red-val" class="score-val">0</span>
+          </div>
+          <div class="match-meta-center">
+            <span id="match-mode-label" class="match-mode-label">TDM (30)</span>
+            <span id="match-timer-val" class="match-timer-val">10:00</span>
+          </div>
+          <div id="score-team-blue" class="team-score blue">
+            <span id="score-blue-val" class="score-val">0</span>
+            <span class="team-label">BLUE</span>
+          </div>
+        </div>
+
         <div class="hud-top-right">
+          <div id="room-code-badge" class="hud-pill hidden">
+            <span class="indicator-dot online"></span>
+            <span id="room-code-badge-text">ROOM: ------</span>
+          </div>
           <div id="player-count-badge" class="hud-pill online">
             <span class="indicator-dot"></span>
             <span id="player-count-text">PLAYERS ONLINE: 1</span>
@@ -66,6 +97,15 @@ export class HUD {
 
       <!-- Kill Feed (Top Right beneath header) -->
       <div id="kill-feed-container" class="kill-feed-container"></div>
+
+      <!-- 5-Second Spawn Shield Notification Banner (Mandatory Requirement B) -->
+      <div id="spawn-shield-banner" class="spawn-shield-banner hidden">
+        <div class="shield-icon">🛡️</div>
+        <div class="shield-text">
+          <span class="shield-title">SPAWN PROTECTION ACTIVE</span>
+          <span class="shield-sub">WEAPONS LOCKED • <span id="shield-timer-val">5.0</span>s</span>
+        </div>
+      </div>
 
       <!-- Bottom HUD: Health and Weapon Ammo -->
       <footer class="hud-bottom">
@@ -115,51 +155,147 @@ export class HUD {
         </div>
       </div>
 
-      <!-- Multiplayer Deploy & Pause Screen -->
+      <!-- Match End Screen Overlay -->
+      <div id="match-end-overlay" class="match-end-overlay hidden">
+        <div class="match-end-card">
+          <div class="match-end-badge">MATCH CONCLUDED</div>
+          <h1 id="match-winner-title" class="match-winner-title">RED TEAM WINS</h1>
+          <p id="match-end-reason" class="match-end-reason">Score limit reached (30 Kills)</p>
+
+          <div class="match-end-scores">
+            <div class="end-score-box red">
+              <span class="end-score-label">RED TEAM</span>
+              <span id="end-red-score" class="end-score-num">30</span>
+            </div>
+            <div class="end-score-divider">VS</div>
+            <div class="end-score-box blue">
+              <span class="end-score-label">BLUE TEAM</span>
+              <span id="end-blue-score" class="end-score-num">22</span>
+            </div>
+          </div>
+
+          <!-- Final Leaderboard Table -->
+          <div class="leaderboard-table-container">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th>RANK</th>
+                  <th>OPERATOR</th>
+                  <th>TEAM</th>
+                  <th>KILLS</th>
+                  <th>DEATHS</th>
+                  <th>SCORE</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-tbody">
+              </tbody>
+            </table>
+          </div>
+
+          <button id="btn-return-lobby" class="btn-deploy" type="button">
+            RETURN TO LOBBY
+          </button>
+        </div>
+      </div>
+
+      <!-- Tactical Pause / Lobby / Deploy Screen -->
       <div id="pause-screen" class="pause-screen">
         <div class="pause-card">
           <div class="brand-title">BREACHERS<span class="accent">.IO</span></div>
-          <div class="badge-pill">CHUNK 3 — MULTIPLAYER COMBAT SYSTEM</div>
-          <h2>CONTAINER YARD</h2>
-          <p class="desc">Server-authoritative Spring Boot WebSocket tactical FPS arena.</p>
+          <div class="badge-pill">CHUNK 4 — PRIVATE ROOMS • TDM • FFA</div>
 
-          <!-- Connection Panel -->
-          <div class="connection-panel">
-            <div class="form-row">
-              <label for="input-username">OPERATOR CALLSIGN</label>
-              <input id="input-username" type="text" maxlength="16" value="${this.defaultUsername}" placeholder="Enter callsign..." autocomplete="off" />
+          <!-- Error Alert Banner -->
+          <div id="lobby-error-banner" class="lobby-error-banner hidden"></div>
+
+          <!-- Top Callsign Row -->
+          <div class="form-row callsign-row">
+            <label for="input-username">OPERATOR CALLSIGN</label>
+            <input id="input-username" type="text" maxlength="16" value="${this.defaultUsername}" placeholder="Enter callsign..." autocomplete="off" />
+          </div>
+
+          <!-- VIEW 1: Main Menu Mode / Room Selection -->
+          <div id="panel-menu" class="lobby-panel">
+            <div class="menu-action-grid">
+              <button id="btn-deploy-public" class="btn-menu-action primary" type="button">
+                <span class="btn-icon">⚡</span>
+                <span class="btn-title">QUICK PLAY</span>
+                <span class="btn-desc">Instant Container Yard Combat</span>
+              </button>
+
+              <button id="btn-create-room" class="btn-menu-action" type="button">
+                <span class="btn-icon">🔒</span>
+                <span class="btn-title">CREATE PRIVATE ROOM</span>
+                <span class="btn-desc">Host TDM or FFA Match</span>
+              </button>
             </div>
 
-            <div class="status-summary">
-              <div class="status-row">
-                <span class="status-key">NETWORK STATUS:</span>
-                <span id="modal-net-status" class="status-val disconnected">Disconnected</span>
-              </div>
-              <div class="status-row">
-                <span class="status-key">ASSIGNED ID:</span>
-                <span id="modal-player-id" class="status-val">Not Connected</span>
-              </div>
-              <div class="status-row">
-                <span class="status-key">PLAYERS IN YARD:</span>
-                <span id="modal-player-count" class="status-val">1 Player</span>
-              </div>
+            <!-- Join by Code Input Box -->
+            <div class="join-code-box">
+              <input id="input-join-code" type="text" maxlength="6" placeholder="ENTER 6-CHAR ROOM CODE" autocomplete="off" />
+              <button id="btn-join-room" class="btn-secondary" type="button">JOIN ROOM</button>
+            </div>
+
+            <!-- Controls Guide -->
+            <div class="controls-guide">
+              <div class="ctrl-row"><span>WASD</span><span>Move & Slide</span></div>
+              <div class="ctrl-row"><span>Mouse</span><span>Aim & Look</span></div>
+              <div class="ctrl-row"><span>Left Click</span><span>Fire / Melee Attack</span></div>
+              <div class="ctrl-row"><span>1, 2, 3</span><span>Select Assault / Pistol / Knife</span></div>
+              <div class="ctrl-row"><span>R</span><span>Reload Firearm</span></div>
+              <div class="ctrl-row"><span>Esc</span><span>Pause / Unlock Mouse</span></div>
             </div>
           </div>
 
-          <!-- Controls Guide -->
-          <div class="controls-guide">
-            <div class="ctrl-row"><span>WASD</span><span>Move & Slide</span></div>
-            <div class="ctrl-row"><span>Mouse</span><span>Aim & Look</span></div>
-            <div class="ctrl-row"><span>Left Click</span><span>Fire / Melee Attack</span></div>
-            <div class="ctrl-row"><span>1, 2, 3</span><span>Select Assault / Pistol / Knife</span></div>
-            <div class="ctrl-row"><span>R</span><span>Reload Firearm</span></div>
-            <div class="ctrl-row"><span>Space / Shift</span><span>Jump / Sprint</span></div>
-            <div class="ctrl-row"><span>Esc</span><span>Pause / Unlock Mouse</span></div>
-          </div>
+          <!-- VIEW 2: Private Room Lobby Panel -->
+          <div id="panel-room-lobby" class="lobby-panel hidden">
+            <div class="room-header-row">
+              <div class="room-code-tag">
+                <span class="tag-label">ROOM CODE:</span>
+                <span id="room-code-display" class="tag-code">------</span>
+                <button id="btn-copy-code" class="btn-copy" type="button" title="Copy Room Code">COPY</button>
+              </div>
 
-          <button id="btn-deploy" class="btn-deploy" type="button">
-            DEPLOY TO COMBAT
-          </button>
+              <!-- Mode Selection (Host Only) -->
+              <div class="room-mode-selector">
+                <span class="tag-label">MODE:</span>
+                <button id="btn-mode-tdm" class="btn-mode active" type="button">TDM (30)</button>
+                <button id="btn-mode-ffa" class="btn-mode" type="button">FFA (20)</button>
+              </div>
+            </div>
+
+            <!-- TDM Rosters Container -->
+            <div id="tdm-rosters-container" class="tdm-rosters-grid">
+              <div class="team-roster red">
+                <div class="roster-header">
+                  <span class="roster-title">RED TEAM (<span id="count-red">0</span>/5)</span>
+                  <button id="btn-join-red" class="btn-join-team red" type="button">JOIN RED</button>
+                </div>
+                <div id="roster-list-red" class="roster-player-list"></div>
+              </div>
+
+              <div class="team-roster blue">
+                <div class="roster-header">
+                  <span class="roster-title">BLUE TEAM (<span id="count-blue">0</span>/5)</span>
+                  <button id="btn-join-blue" class="btn-join-team blue" type="button">JOIN BLUE</button>
+                </div>
+                <div id="roster-list-blue" class="roster-player-list"></div>
+              </div>
+            </div>
+
+            <!-- FFA Rosters Container -->
+            <div id="ffa-rosters-container" class="ffa-rosters-box hidden">
+              <div class="roster-header">
+                <span class="roster-title">SOLO OPERATORS (<span id="count-ffa">0</span>/10)</span>
+              </div>
+              <div id="roster-list-ffa" class="roster-player-list ffa"></div>
+            </div>
+
+            <div class="room-actions-bar">
+              <button id="btn-start-match" class="btn-deploy" type="button">START MATCH</button>
+              <button id="btn-leave-room" class="btn-secondary" type="button">LEAVE ROOM</button>
+            </div>
+            <div id="lobby-wait-text" class="lobby-wait-text hidden">Waiting for room host to start match...</div>
+          </div>
         </div>
       </div>
     `;
@@ -170,6 +306,15 @@ export class HUD {
     this.damageLayer = document.getElementById('damage-numbers-layer');
     this.damageVignette = document.getElementById('damage-vignette');
     this.killFeedContainer = document.getElementById('kill-feed-container');
+
+    this.spawnShieldBanner = document.getElementById('spawn-shield-banner');
+    this.shieldTimerVal = document.getElementById('shield-timer-val');
+
+    this.matchScoreBar = document.getElementById('match-score-bar');
+    this.scoreRedVal = document.getElementById('score-red-val');
+    this.scoreBlueVal = document.getElementById('score-blue-val');
+    this.matchModeLabel = document.getElementById('match-mode-label');
+    this.matchTimerVal = document.getElementById('match-timer-val');
 
     this.healthValue = document.getElementById('health-value');
     this.healthBarFill = document.getElementById('health-bar-fill');
@@ -188,24 +333,282 @@ export class HUD {
     this.deathWeaponName = document.getElementById('death-weapon-name');
     this.deathTimer = document.getElementById('death-timer');
 
+    this.matchEndOverlay = document.getElementById('match-end-overlay');
+    this.matchWinnerTitle = document.getElementById('match-winner-title');
+    this.matchEndReason = document.getElementById('match-end-reason');
+    this.endRedScore = document.getElementById('end-red-score');
+    this.endBlueScore = document.getElementById('end-blue-score');
+    this.leaderboardTbody = document.getElementById('leaderboard-tbody');
+    this.btnReturnLobby = document.getElementById('btn-return-lobby');
+
     this.fpsCounter = document.getElementById('fps-counter');
     this.pauseScreen = document.getElementById('pause-screen');
-    this.btnDeploy = document.getElementById('btn-deploy');
     this.inputUsername = document.getElementById('input-username');
     this.netStatusBadge = document.getElementById('net-status-badge');
     this.netStatusText = document.getElementById('net-status-text');
-    this.modalNetStatus = document.getElementById('modal-net-status');
-    this.modalPlayerId = document.getElementById('modal-player-id');
     this.playerCountText = document.getElementById('player-count-text');
-    this.modalPlayerCount = document.getElementById('modal-player-count');
+    this.roomCodeBadge = document.getElementById('room-code-badge');
+    this.roomCodeBadgeText = document.getElementById('room-code-badge-text');
 
-    this.btnDeploy.addEventListener('click', () => {
+    // Lobby Elements
+    this.lobbyErrorBanner = document.getElementById('lobby-error-banner');
+    this.panelMenu = document.getElementById('panel-menu');
+    this.panelRoomLobby = document.getElementById('panel-room-lobby');
+    this.btnDeployPublic = document.getElementById('btn-deploy-public');
+    this.btnCreateRoom = document.getElementById('btn-create-room');
+    this.inputJoinCode = document.getElementById('input-join-code');
+    this.btnJoinRoom = document.getElementById('btn-join-room');
+
+    this.roomCodeDisplay = document.getElementById('room-code-display');
+    this.btnCopyCode = document.getElementById('btn-copy-code');
+    this.btnModeTdm = document.getElementById('btn-mode-tdm');
+    this.btnModeFfa = document.getElementById('btn-mode-ffa');
+    this.tdmRostersContainer = document.getElementById('tdm-rosters-container');
+    this.ffaRostersContainer = document.getElementById('ffa-rosters-container');
+    this.countRed = document.getElementById('count-red');
+    this.countBlue = document.getElementById('count-blue');
+    this.countFfa = document.getElementById('count-ffa');
+    this.rosterListRed = document.getElementById('roster-list-red');
+    this.rosterListBlue = document.getElementById('roster-list-blue');
+    this.rosterListFfa = document.getElementById('roster-list-ffa');
+    this.btnJoinRed = document.getElementById('btn-join-red');
+    this.btnJoinBlue = document.getElementById('btn-join-blue');
+    this.btnStartMatch = document.getElementById('btn-start-match');
+    this.btnLeaveRoom = document.getElementById('btn-leave-room');
+    this.lobbyWaitText = document.getElementById('lobby-wait-text');
+
+    this.initEventListeners();
+  }
+
+  initEventListeners() {
+    this.btnDeployPublic.addEventListener('click', () => {
       const username = this.getUsername();
       localStorage.setItem('breachers_username', username);
-      if (this.onPlayClick) {
-        this.onPlayClick(username);
+      if (this.onPlayClick) this.onPlayClick(username);
+    });
+
+    this.btnCreateRoom.addEventListener('click', () => {
+      const username = this.getUsername();
+      localStorage.setItem('breachers_username', username);
+      if (this.onCreateRoom) this.onCreateRoom(username, 'TDM');
+    });
+
+    this.btnJoinRoom.addEventListener('click', () => {
+      const username = this.getUsername();
+      const code = (this.inputJoinCode.value || '').trim();
+      if (!code) {
+        this.showError('Please enter a 6-character room code.');
+        return;
+      }
+      localStorage.setItem('breachers_username', username);
+      if (this.onJoinRoom) this.onJoinRoom(code, username);
+    });
+
+    this.inputJoinCode.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') {
+        this.btnJoinRoom.click();
       }
     });
+
+    this.btnCopyCode.addEventListener('click', () => {
+      if (this.currentRoomState && this.currentRoomState.roomCode) {
+        navigator.clipboard.writeText(this.currentRoomState.roomCode).then(() => {
+          this.btnCopyCode.textContent = 'COPIED!';
+          setTimeout(() => {
+            this.btnCopyCode.textContent = 'COPY';
+          }, 1500);
+        });
+      }
+    });
+
+    this.btnModeTdm.addEventListener('click', () => {
+      if (this.onSetGameMode) this.onSetGameMode('TDM');
+    });
+
+    this.btnModeFfa.addEventListener('click', () => {
+      if (this.onSetGameMode) this.onSetGameMode('FFA');
+    });
+
+    this.btnJoinRed.addEventListener('click', () => {
+      if (this.onSetTeam) this.onSetTeam('RED');
+    });
+
+    this.btnJoinBlue.addEventListener('click', () => {
+      if (this.onSetTeam) this.onSetTeam('BLUE');
+    });
+
+    this.btnStartMatch.addEventListener('click', () => {
+      if (this.onStartMatch) this.onStartMatch();
+    });
+
+    this.btnLeaveRoom.addEventListener('click', () => {
+      if (this.onLeaveRoom) this.onLeaveRoom();
+      this.showMenuPanel();
+    });
+
+    this.btnReturnLobby.addEventListener('click', () => {
+      this.matchEndOverlay.classList.add('hidden');
+      if (this.onReturnToLobby) this.onReturnToLobby();
+    });
+  }
+
+  showError(msg) {
+    if (!this.lobbyErrorBanner) return;
+    this.lobbyErrorBanner.textContent = msg;
+    this.lobbyErrorBanner.classList.remove('hidden');
+    setTimeout(() => {
+      this.lobbyErrorBanner.classList.add('hidden');
+    }, 4000);
+  }
+
+  showMenuPanel() {
+    this.panelMenu.classList.remove('hidden');
+    this.panelRoomLobby.classList.add('hidden');
+    this.roomCodeBadge.classList.add('hidden');
+    this.matchScoreBar.classList.add('hidden');
+  }
+
+  showRoomLobbyPanel() {
+    this.panelMenu.classList.add('hidden');
+    this.panelRoomLobby.classList.remove('hidden');
+  }
+
+  updateRoomState(roomState, localPlayerId) {
+    this.currentRoomState = roomState;
+    this.localPlayerId = localPlayerId || this.localPlayerId;
+
+    if (!roomState || roomState.roomCode === 'PUBLIC') {
+      this.showMenuPanel();
+      return;
+    }
+
+    this.showRoomLobbyPanel();
+    this.roomCodeDisplay.textContent = roomState.roomCode;
+    this.roomCodeBadgeText.textContent = `ROOM: ${roomState.roomCode}`;
+    this.roomCodeBadge.classList.remove('hidden');
+
+    const isHost = this.localPlayerId && this.localPlayerId === roomState.hostId;
+    const isTdm = roomState.mode === 'TDM';
+
+    // Mode buttons state
+    this.btnModeTdm.classList.toggle('active', isTdm);
+    this.btnModeFfa.classList.toggle('active', !isTdm);
+    this.btnModeTdm.disabled = !isHost;
+    this.btnModeFfa.disabled = !isHost;
+
+    if (isTdm) {
+      this.tdmRostersContainer.classList.remove('hidden');
+      this.ffaRostersContainer.classList.add('hidden');
+    } else {
+      this.tdmRostersContainer.classList.add('hidden');
+      this.ffaRostersContainer.classList.remove('hidden');
+    }
+
+    // Host controls
+    if (isHost) {
+      this.btnStartMatch.classList.remove('hidden');
+      this.lobbyWaitText.classList.add('hidden');
+    } else {
+      this.btnStartMatch.classList.add('hidden');
+      this.lobbyWaitText.classList.remove('hidden');
+    }
+
+    // Render players in roster
+    const players = roomState.players || [];
+    let redPlayers = [];
+    let bluePlayers = [];
+
+    this.rosterListRed.innerHTML = '';
+    this.rosterListBlue.innerHTML = '';
+    this.rosterListFfa.innerHTML = '';
+
+    players.forEach(p => {
+      const isMe = p.id === this.localPlayerId;
+      const el = document.createElement('div');
+      el.className = `roster-player-item ${isMe ? 'is-me' : ''}`;
+      el.innerHTML = `
+        <span class="player-name">${p.username} ${p.isHost ? '<span class="host-tag">HOST</span>' : ''} ${isMe ? '<span class="you-tag">(YOU)</span>' : ''}</span>
+        <span class="player-stats">${p.kills}K / ${p.deaths}D</span>
+      `;
+
+      if (isTdm) {
+        if (p.team === 'RED') {
+          redPlayers.push(p);
+          this.rosterListRed.appendChild(el);
+        } else {
+          bluePlayers.push(p);
+          this.rosterListBlue.appendChild(el);
+        }
+      } else {
+        this.rosterListFfa.appendChild(el);
+      }
+    });
+
+    this.countRed.textContent = redPlayers.length;
+    this.countBlue.textContent = bluePlayers.length;
+    this.countFfa.textContent = players.length;
+
+    // In-game score bar updates
+    if (roomState.status === 'IN_PROGRESS') {
+      this.matchScoreBar.classList.remove('hidden');
+      this.matchModeLabel.textContent = `${roomState.mode} (${roomState.killLimit})`;
+      this.scoreRedVal.textContent = roomState.redScore;
+      this.scoreBlueVal.textContent = roomState.blueScore;
+
+      const min = Math.floor(roomState.timeRemainingSec / 60);
+      const sec = roomState.timeRemainingSec % 60;
+      this.matchTimerVal.textContent = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    } else {
+      this.matchScoreBar.classList.add('hidden');
+    }
+  }
+
+  updateScore(redScore, blueScore, killsMap, deathsMap) {
+    if (this.scoreRedVal) this.scoreRedVal.textContent = redScore;
+    if (this.scoreBlueVal) this.scoreBlueVal.textContent = blueScore;
+  }
+
+  showMatchEnded(winner, reason, redScore, blueScore, leaderboard) {
+    if (!this.matchEndOverlay) return;
+
+    let title = 'VICTORY';
+    if (winner === 'RED') title = 'RED TEAM WINS!';
+    else if (winner === 'BLUE') title = 'BLUE TEAM WINS!';
+    else if (winner === 'TIE') title = 'MATCH TIED!';
+    else title = `${winner} WINS!`;
+
+    this.matchWinnerTitle.textContent = title;
+    this.matchEndReason.textContent = reason || 'Match concluded';
+    this.endRedScore.textContent = redScore;
+    this.endBlueScore.textContent = blueScore;
+
+    this.leaderboardTbody.innerHTML = '';
+    (leaderboard || []).forEach((entry, idx) => {
+      const row = document.createElement('tr');
+      row.className = entry.team ? `team-${entry.team.toLowerCase()}` : '';
+      row.innerHTML = `
+        <td>#${idx + 1}</td>
+        <td><strong>${entry.username}</strong></td>
+        <td>${entry.team || 'SOLO'}</td>
+        <td>${entry.kills}</td>
+        <td>${entry.deaths}</td>
+        <td><strong>${entry.score}</strong></td>
+      `;
+      this.leaderboardTbody.appendChild(row);
+    });
+
+    this.matchEndOverlay.classList.remove('hidden');
+  }
+
+  updateSpawnShield(remainingSec) {
+    if (!this.spawnShieldBanner) return;
+    this.spawnShieldBanner.classList.remove('hidden');
+    this.shieldTimerVal.textContent = remainingSec.toFixed(1);
+  }
+
+  hideSpawnShield() {
+    if (!this.spawnShieldBanner) return;
+    this.spawnShieldBanner.classList.add('hidden');
   }
 
   getUsername() {
@@ -235,6 +638,7 @@ export class HUD {
     if (status === 'connected') {
       label = playerId ? `CONNECTED (${playerId})` : 'CONNECTED';
       className = 'online';
+      if (playerId) this.localPlayerId = playerId;
     } else if (status === 'connecting') {
       label = 'CONNECTING...';
       className = 'connecting';
@@ -249,22 +653,12 @@ export class HUD {
     if (this.netStatusText) {
       this.netStatusText.textContent = `WS: ${label}`;
     }
-    if (this.modalNetStatus) {
-      this.modalNetStatus.textContent = label;
-      this.modalNetStatus.className = `status-val ${className}`;
-    }
-    if (this.modalPlayerId && playerId) {
-      this.modalPlayerId.textContent = playerId;
-    }
   }
 
   setPlayerCount(count) {
     const text = `PLAYERS ONLINE: ${count}`;
     if (this.playerCountText) {
       this.playerCountText.textContent = text;
-    }
-    if (this.modalPlayerCount) {
-      this.modalPlayerCount.textContent = `${count} Player${count === 1 ? '' : 's'}`;
     }
   }
 
@@ -380,7 +774,6 @@ export class HUD {
 
     this.killFeedContainer.prepend(entry);
 
-    // Fade out and remove after 4.5 seconds
     setTimeout(() => {
       entry.classList.add('fade-out');
       setTimeout(() => {

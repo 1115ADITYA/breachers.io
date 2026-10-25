@@ -40,6 +40,10 @@ public enum WeaponType {
         return baseDamage;
     }
 
+    public int getDamage() {
+        return baseDamage;
+    }
+
     public long getFireCooldownMs() {
         return (long) (fireCooldownSec * 1000);
     }

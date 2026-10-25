@@ -49,6 +49,10 @@ export class PlayerController {
       sprint: false
     };
 
+    // 5-second spawn protection state (Mandatory Requirement B)
+    this.spawnProtectedUntil = performance.now() + 5000;
+    this.wasProtected = true;
+
     // Pointer Lock State
     this.isLocked = false;
 
@@ -60,6 +64,15 @@ export class PlayerController {
 
   setWeapon(weapon) {
     this.weapon = weapon;
+  }
+
+  isProtected() {
+    return performance.now() < this.spawnProtectedUntil;
+  }
+
+  applySpawnProtection(durationMs = 5000) {
+    this.spawnProtectedUntil = performance.now() + durationMs;
+    this.wasProtected = true;
   }
 
   setDead(isDead) {
@@ -77,7 +90,28 @@ export class PlayerController {
     this.pitch = 0;
     this.velocity.set(0, 0, 0);
     this.setDead(false);
+    this.applySpawnProtection(5000); // 5-second mandatory spawn protection on every spawn
     this.updateCamera();
+  }
+
+  requestLock() {
+    try {
+      if (this.domElement && this.domElement.requestPointerLock) {
+        this.domElement.requestPointerLock();
+      }
+    } catch (e) {
+      console.warn('Pointer lock request error:', e);
+    }
+  }
+
+  exitLock() {
+    try {
+      if (document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+    } catch (e) {
+      console.warn('Exit pointer lock error:', e);
+    }
   }
 
   initEventListeners() {
@@ -110,6 +144,10 @@ export class PlayerController {
 
       if (e.button === 0 && !this.isDead) {
         this.isMouseDown = true;
+        // Requirement B: Protected player cannot fire weapons or attack with knife
+        if (this.isProtected()) {
+          return;
+        }
         if (this.weapon) {
           this.weapon.shoot();
         }
@@ -205,8 +243,21 @@ export class PlayerController {
       return;
     }
 
-    // Handle continuous automatic fire when mouse is held
-    if (this.isMouseDown && !this.isDead && this.weapon && this.weapon.currentStats.auto) {
+    // Update spawn shield countdown in HUD
+    if (this.isProtected()) {
+      const remainingSec = Math.max(0, (this.spawnProtectedUntil - performance.now()) / 1000);
+      if (this.hud && this.hud.updateSpawnShield) {
+        this.hud.updateSpawnShield(remainingSec);
+      }
+    } else if (this.wasProtected) {
+      this.wasProtected = false;
+      if (this.hud && this.hud.hideSpawnShield) {
+        this.hud.hideSpawnShield();
+      }
+    }
+
+    // Handle continuous automatic fire when mouse is held (disabled while spawn protected)
+    if (this.isMouseDown && !this.isDead && !this.isProtected() && this.weapon && this.weapon.currentStats.auto) {
       this.weapon.shoot();
     }
 

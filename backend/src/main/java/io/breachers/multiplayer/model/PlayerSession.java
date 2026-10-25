@@ -10,7 +10,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class PlayerSession {
 
     public static final int MAX_HEALTH = 100;
-    public static final long SPAWN_PROTECTION_DURATION_MS = 2000;
+    // Exactly 5 seconds of spawn protection as mandated by Chunk 4 Additional Requirements
+    public static final long SPAWN_PROTECTION_DURATION_MS = 5000L;
 
     private final String socketId;
     private final String playerId;
@@ -18,6 +19,13 @@ public class PlayerSession {
     private final WebSocketSession session;
 
     private volatile PlayerState state;
+
+    // Room and match state
+    private volatile String currentRoomCode = "PUBLIC";
+    private volatile String team = "NONE"; // "RED", "BLUE", "FFA", "NONE"
+    private volatile boolean ready = false;
+    private final AtomicInteger kills = new AtomicInteger(0);
+    private final AtomicInteger deaths = new AtomicInteger(0);
 
     // Combat state
     private volatile int health = MAX_HEALTH;
@@ -65,6 +73,11 @@ public class PlayerSession {
         }
     }
 
+    public void resetScore() {
+        kills.set(0);
+        deaths.set(0);
+    }
+
     public String getSocketId() {
         return socketId;
     }
@@ -89,6 +102,46 @@ public class PlayerSession {
         this.state = newState;
     }
 
+    public String getCurrentRoomCode() {
+        return currentRoomCode;
+    }
+
+    public void setCurrentRoomCode(String roomCode) {
+        this.currentRoomCode = roomCode;
+    }
+
+    public String getTeam() {
+        return team;
+    }
+
+    public void setTeam(String team) {
+        this.team = team != null ? team.toUpperCase() : "NONE";
+    }
+
+    public boolean isReady() {
+        return ready;
+    }
+
+    public void setReady(boolean ready) {
+        this.ready = ready;
+    }
+
+    public int getKills() {
+        return kills.get();
+    }
+
+    public void incrementKills() {
+        kills.incrementAndGet();
+    }
+
+    public int getDeaths() {
+        return deaths.get();
+    }
+
+    public void incrementDeaths() {
+        deaths.incrementAndGet();
+    }
+
     public int getHealth() {
         return health;
     }
@@ -106,6 +159,19 @@ public class PlayerSession {
 
     public boolean isSpawnProtected() {
         return System.currentTimeMillis() < spawnProtectedUntilMs;
+    }
+
+    public long getSpawnProtectedUntilMs() {
+        return spawnProtectedUntilMs;
+    }
+
+    public long getSpawnProtectionRemainingMs() {
+        long rem = spawnProtectedUntilMs - System.currentTimeMillis();
+        return Math.max(0, rem);
+    }
+
+    public void applySpawnProtection() {
+        this.spawnProtectedUntilMs = System.currentTimeMillis() + SPAWN_PROTECTION_DURATION_MS;
     }
 
     public void clearSpawnProtection() {
@@ -167,10 +233,14 @@ public class PlayerSession {
     }
 
     /**
-     * Check if player can fire the requested shot
+     * Check if player can fire the requested shot.
+     * Enforces that players cannot fire while dead, while reloading,
+     * or during the mandatory 5-second spawn protection period.
      */
     public boolean canFire(long shotId, WeaponType requestedWeapon) {
         if (dead) return false;
+        // Requirement B: Protected player cannot fire weapons or attack with knife
+        if (isSpawnProtected()) return false;
         if (requestedWeapon != equippedWeapon) return false;
         if (isReloading()) return false;
 
@@ -213,6 +283,7 @@ public class PlayerSession {
 
     /**
      * Apply damage to player. Returns resulting health.
+     * Enforces that dead or spawn-protected players cannot take damage.
      */
     public int takeDamage(int amount) {
         if (dead || isSpawnProtected() || amount <= 0) {
@@ -232,7 +303,8 @@ public class PlayerSession {
     public void respawn(double x, double y, double z, double yaw) {
         this.health = MAX_HEALTH;
         this.dead = false;
-        this.spawnProtectedUntilMs = System.currentTimeMillis() + SPAWN_PROTECTION_DURATION_MS;
+        // Reapply mandatory 5-second spawn protection on every respawn
+        applySpawnProtection();
         this.lastFireTimeMs = 0;
         this.reloadingUntilMs = 0;
         resetAmmo();

@@ -2,7 +2,7 @@
  * GameNetwork
  * Manages WebSocket connection to the Spring Boot backend (/ws/game),
  * structured protocol serialization, rate-limited movement transmission,
- * combat messaging (SHOOT, RELOAD, SWITCH_WEAPON), and session state.
+ * combat messaging, private rooms, team assignments, and match lifecycle.
  */
 export class GameNetwork {
   constructor(options = {}) {
@@ -16,6 +16,7 @@ export class GameNetwork {
     this.isConnecting = false;
     this.localPlayerId = null;
     this.localUsername = null;
+    this.currentRoomCode = null;
 
     // Transmission Rate Limiting: 20 updates per second (50ms interval)
     this.updateIntervalMs = 50;
@@ -42,16 +43,32 @@ export class GameNetwork {
     this.onPlayerRespawned = null;
     this.onKillFeed = null;
 
+    // Chunk 4 Room & Match Callbacks
+    this.onRoomState = null;
+    this.onMatchStarted = null;
+    this.onScoreUpdate = null;
+    this.onMatchEnded = null;
+    this.onSpawnProtection = null;
+
     this.onlinePlayerCount = 1;
+    this.pendingAction = null;
   }
 
-  connect(username = 'Operator') {
+  get playerId() {
+    return this.localPlayerId;
+  }
+
+  connect(username = 'Operator', initialAction = null) {
+    this.localUsername = username;
+    this.pendingAction = initialAction;
+
     if (this.socket && (this.isConnected || this.isConnecting)) {
-      console.warn('GameNetwork: WebSocket is already connecting or connected.');
+      if (this.pendingAction && this.isConnected) {
+        this.executePendingAction();
+      }
       return;
     }
 
-    this.localUsername = username;
     this.isConnecting = true;
     this.notifyStatus('connecting');
 
@@ -70,11 +87,15 @@ export class GameNetwork {
       this.isConnecting = false;
       this.notifyStatus('connected');
 
-      // Send JOIN handshake
-      this.send({
-        type: 'JOIN',
-        username: this.localUsername
-      });
+      // Execute pending room action or fallback to standard join
+      if (this.pendingAction) {
+        this.executePendingAction();
+      } else {
+        this.send({
+          type: 'JOIN',
+          username: this.localUsername
+        });
+      }
     };
 
     this.socket.onmessage = (event) => {
@@ -92,49 +113,52 @@ export class GameNetwork {
       this.isConnecting = false;
       this.localPlayerId = null;
       this.onlinePlayerCount = 1;
+      this.currentRoomCode = null;
       this.notifyStatus('disconnected');
       if (this.onPlayerCountChange) this.onPlayerCountChange(1);
     };
   }
 
+  executePendingAction() {
+    if (!this.pendingAction) return;
+    const action = this.pendingAction;
+    this.pendingAction = null;
+
+    if (action.type === 'CREATE_ROOM') {
+      this.createRoom(action.username, action.mode);
+    } else if (action.type === 'JOIN_ROOM') {
+      this.joinRoom(action.roomCode, action.username);
+    }
+  }
+
   disconnect() {
     if (this.socket) {
       if (this.isConnected) {
-        try {
-          this.send({ type: 'LEAVE' });
-        } catch (e) {
-          // Socket might already be closing
-        }
+        this.send({ type: 'LEAVE' });
       }
       this.socket.close();
       this.socket = null;
     }
-    this.isConnected = false;
-    this.isConnecting = false;
-    this.localPlayerId = null;
-    this.notifyStatus('disconnected');
   }
 
-  send(messageObj) {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+  send(data) {
+    if (!this.isConnected || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
       return;
     }
     try {
-      this.socket.send(JSON.stringify(messageObj));
+      this.socket.send(JSON.stringify(data));
     } catch (e) {
-      console.error('GameNetwork: Failed to send message:', e);
+      console.error('GameNetwork: Failed to send frame:', e);
     }
   }
 
-  /**
-   * Rate-limited player movement transmission (20Hz)
-   */
   sendMovement(x, y, z, yaw, pitch, isMoving, isSprinting) {
     if (!this.isConnected || !this.localPlayerId) return;
 
     const now = performance.now();
     if (now - this.lastSendTime >= this.updateIntervalMs) {
       this.lastSendTime = now;
+
       this.send({
         type: 'MOVE',
         x: Math.round(x * 1000) / 1000,
@@ -148,9 +172,6 @@ export class GameNetwork {
     }
   }
 
-  /**
-   * Send a SHOOT combat message to the server
-   */
   sendShoot(weapon, origin, dir) {
     if (!this.isConnected || !this.localPlayerId) return;
 
@@ -168,23 +189,77 @@ export class GameNetwork {
     });
   }
 
-  /**
-   * Send a RELOAD command to the server
-   */
   sendReload() {
     if (!this.isConnected || !this.localPlayerId) return;
     this.send({ type: 'RELOAD' });
   }
 
-  /**
-   * Send a SWITCH_WEAPON command to the server
-   */
   sendSwitchWeapon(weapon) {
     if (!this.isConnected || !this.localPlayerId) return;
     this.send({
       type: 'SWITCH_WEAPON',
       weapon
     });
+  }
+
+  // --- Chunk 4 Room Actions ---
+
+  createRoom(username, mode = 'TDM') {
+    this.localUsername = username || this.localUsername || 'Operator';
+    if (!this.isConnected) {
+      this.connect(this.localUsername, { type: 'CREATE_ROOM', username: this.localUsername, mode });
+      return;
+    }
+    this.send({
+      type: 'CREATE_ROOM',
+      username: this.localUsername,
+      mode
+    });
+  }
+
+  joinRoom(roomCode, username) {
+    this.localUsername = username || this.localUsername || 'Operator';
+    const code = (roomCode || '').trim().toUpperCase();
+    if (!this.isConnected) {
+      this.connect(this.localUsername, { type: 'JOIN_ROOM', roomCode: code, username: this.localUsername });
+      return;
+    }
+    this.send({
+      type: 'JOIN_ROOM',
+      roomCode: code,
+      username: this.localUsername
+    });
+  }
+
+  leaveRoom() {
+    if (!this.isConnected) return;
+    this.send({ type: 'LEAVE_ROOM' });
+  }
+
+  setGameMode(mode) {
+    if (!this.isConnected) return;
+    this.send({
+      type: 'SET_GAME_MODE',
+      mode
+    });
+  }
+
+  setTeam(team) {
+    if (!this.isConnected) return;
+    this.send({
+      type: 'SET_TEAM',
+      team
+    });
+  }
+
+  startMatch() {
+    if (!this.isConnected) return;
+    this.send({ type: 'START_MATCH' });
+  }
+
+  returnToLobby() {
+    if (!this.isConnected) return;
+    this.send({ type: 'RETURN_TO_LOBBY' });
   }
 
   handleMessage(rawString) {
@@ -249,6 +324,31 @@ export class GameNetwork {
 
       case 'KILL_FEED':
         if (this.onKillFeed) this.onKillFeed(msg);
+        break;
+
+      case 'ROOM_STATE':
+        this.currentRoomCode = msg.roomCode;
+        if (msg.players) {
+          this.onlinePlayerCount = msg.players.length;
+          if (this.onPlayerCountChange) this.onPlayerCountChange(this.onlinePlayerCount);
+        }
+        if (this.onRoomState) this.onRoomState(msg);
+        break;
+
+      case 'MATCH_STARTED':
+        if (this.onMatchStarted) this.onMatchStarted(msg);
+        break;
+
+      case 'SCORE_UPDATE':
+        if (this.onScoreUpdate) this.onScoreUpdate(msg);
+        break;
+
+      case 'MATCH_ENDED':
+        if (this.onMatchEnded) this.onMatchEnded(msg);
+        break;
+
+      case 'SPAWN_PROTECTION':
+        if (this.onSpawnProtection) this.onSpawnProtection(msg);
         break;
 
       case 'ERROR':

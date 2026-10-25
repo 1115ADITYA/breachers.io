@@ -2,6 +2,7 @@ package io.breachers.multiplayer.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
+import java.util.Map;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public sealed interface ServerMessage {
@@ -167,6 +168,93 @@ public sealed interface ServerMessage {
     ) implements ServerMessage {
         public KillFeed(String killerName, String victimName, String weapon) {
             this("KILL_FEED", killerName, victimName, weapon);
+        }
+    }
+
+    // --- Chunk 4: Private Rooms & Match System Messages ---
+
+    record RoomPlayerInfo(
+            String id,
+            String username,
+            String team,
+            boolean isHost,
+            boolean isReady,
+            int kills,
+            int deaths
+    ) {}
+
+    record PlayerMatchResult(
+            String id,
+            String username,
+            String team,
+            int kills,
+            int deaths,
+            int score
+    ) {}
+
+    record RoomState(
+            String type,
+            String roomCode,
+            String hostId,
+            String mode,
+            String status,
+            List<RoomPlayerInfo> players,
+            int redScore,
+            int blueScore,
+            int killLimit,
+            int timeRemainingSec
+    ) implements ServerMessage {
+        public RoomState(String roomCode, String hostId, String mode, String status,
+                         List<RoomPlayerInfo> players, int redScore, int blueScore, int killLimit, int timeRemainingSec) {
+            this("ROOM_STATE", roomCode, hostId, mode, status, players, redScore, blueScore, killLimit, timeRemainingSec);
+        }
+    }
+
+    record MatchStarted(
+            String type,
+            String roomCode,
+            String mode,
+            int matchDurationSec,
+            int killLimit
+    ) implements ServerMessage {
+        public MatchStarted(String roomCode, String mode, int matchDurationSec, int killLimit) {
+            this("MATCH_STARTED", roomCode, mode, matchDurationSec, killLimit);
+        }
+    }
+
+    record ScoreUpdate(
+            String type,
+            int redScore,
+            int blueScore,
+            Map<String, Integer> playerKills,
+            Map<String, Integer> playerDeaths
+    ) implements ServerMessage {
+        public ScoreUpdate(int redScore, int blueScore, Map<String, Integer> playerKills, Map<String, Integer> playerDeaths) {
+            this("SCORE_UPDATE", redScore, blueScore, playerKills, playerDeaths);
+        }
+    }
+
+    record MatchEnded(
+            String type,
+            String winner,
+            String reason,
+            int redScore,
+            int blueScore,
+            List<PlayerMatchResult> leaderboard
+    ) implements ServerMessage {
+        public MatchEnded(String winner, String reason, int redScore, int blueScore, List<PlayerMatchResult> leaderboard) {
+            this("MATCH_ENDED", winner, reason, redScore, blueScore, leaderboard);
+        }
+    }
+
+    record SpawnProtection(
+            String type,
+            String playerId,
+            int durationMs,
+            boolean active
+    ) implements ServerMessage {
+        public SpawnProtection(String playerId, int durationMs, boolean active) {
+            this("SPAWN_PROTECTION", playerId, durationMs, active);
         }
     }
 }
