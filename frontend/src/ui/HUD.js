@@ -199,7 +199,7 @@ export class HUD {
       </div>
 
       <!-- Tactical Pause / Lobby / Deploy Screen -->
-      <div id="pause-screen" class="pause-screen">
+      <div id="pause-screen" class="pause-screen hidden">
         <div class="pause-card">
           <div class="brand-title">BREACHERS<span class="accent">.IO</span></div>
           <div class="badge-pill">CHUNK 4 — PRIVATE ROOMS • TDM • FFA</div>
@@ -814,5 +814,24 @@ export class HUD {
       clearInterval(this.deathCountdownInterval);
     }
     this.deathOverlay.classList.add('hidden');
+  }
+
+  setArenaName(arenaName) {
+    const el = this.container ? this.container.querySelector('.arena-name') : null;
+    if (el) {
+      el.textContent = arenaName;
+    }
+  }
+
+  show() {
+    if (this.container) {
+      this.container.classList.remove('hidden');
+    }
+  }
+
+  hide() {
+    if (this.container) {
+      this.container.classList.add('hidden');
+    }
   }
 }

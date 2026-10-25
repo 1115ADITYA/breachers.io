@@ -340,6 +340,75 @@ node ../scratch/test-chunk4-tdm-ffa-rules.mjs
 - **Solid 60+ FPS Performance**: Measured in-browser at **61 to 69 FPS** with smooth player sliding, collision, and raycasting.
 - **100% Gameplay & Combat Compatibility**: All existing spawn coordinates, 5-second spawn protection, friendly fire rejection, and hit detection remain intact.
 
+---
+
+## Chunk 6 — Complete Game Frontend + Warehouse GLB Map Integration
+
+### 1. Application State & Navigation Flow
+- **Clean Tactical Application Lifecycle**:
+  `BOOT -> MAIN MENU -> OPERATORS / LOADOUT / MAPS -> LOBBY -> MATCH LOADING -> GAMEPLAY -> MATCH END -> LOBBY`
+- **Zero Auto-Deploy**: The application opens directly into a polished full-screen Main Menu on page load, rather than forcing first-person gameplay immediately.
+- **Pointer Lock Safety**: Mouse cursor is completely unlocked in menus and only acquired upon intentional deployment into gameplay.
+- **Unified Scene & Single Event Loop**: Reuses the core Three.js WebGL renderer, camera, and collision engine without duplicate render loops, listeners, or socket leaks.
+
+### 2. PUBG-Inspired Main Menu & Presentation
+- **Visual Aesthetic**: Sleek dark charcoal (`#0b0f17`) and midnight navy backdrop with restrained tactical orange accents (`#f97316`).
+- **Brand Identity**: Original `BREACHERS.IO` logo and official tagline: *"Lock In. Team Up. Breach Out."*
+- **Top Navigation Bar**: Direct navigation tabs for `HOME`, `OPERATORS`, `LOADOUT`, `MAPS`, and `SETTINGS`.
+- **3D Operative Preview Pedestal**: Interactive Three.js 3D operator model standing on a glowing orange ring deployment platform with click-and-drag 360° rotation controls and breathing animation.
+- **Quick Deployment Hub**: Prominent `QUICK PLAY` button, `CREATE PRIVATE ROOM` action, direct 6-character room code joiner, and callsign customization.
+
+### 3. Operator Selection System
+- **Operative Classes**:
+  1. **Vanguard**: Frontline Assault — Heavy composite armor with maritime spec-ops camo.
+  2. **Ghost**: Recon Infiltrator — Carbon-fiber stealth suit with infrared red night vision.
+  3. **Stryker**: Desert Operator — Sand dust ballistic gear with amber gold thermal optics.
+  4. **Enforcer**: Heavy Pointman — Reinforced olive drab armor with emerald thermal target lock.
+- **Material & Camo Variants**: Selectable uniforms (Covert Blackout, Arctic Ghost, Hazard Orange, Desert Dune, etc.).
+- **Local Persistence**: Remembers selected operator and camo finish in `localStorage`.
+
+### 4. Weapon Loadout Inspection
+- **Authentic Combat Ballistics**: Reads authoritative values directly from [`Weapon.js`](file:///frontend/src/player/Weapon.js):
+  - **Breacher-V1 (Assault Rifle)**: 24 base damage (43 headshot 1.8x), 545 RPM, 30/90 capacity, 120m range.
+  - **TAC-9 (Pistol)**: 38 base damage (68 headshot 1.8x), 240 RPM, 12/36 capacity, 80m range.
+  - **Tactical Trench Knife (Melee)**: 55 base damage (99 headshot 1.8x), 120 RPM, melee range 2.5m.
+- **Interactive 3D Armory**: Click `INSPECT 3D VIEW` to preview high-detail 3D viewmodels of weapons with full rotation.
+
+### 5. Modular Map Registry & Selection
+- **Modular Registry ([`MapRegistry.js`](file:///frontend/src/maps/MapRegistry.js))**:
+  - **Container Yard**: `AVAILABLE` — Open-air shipping container terminal.
+  - **Warehouse**: `AVAILABLE` — Low-poly tactical indoor logistics depot.
+  - **Desert Outpost**: `COMING SOON` — Disabled military checkpoint.
+  - **Urban Streets**: `COMING SOON` — Disabled downtown avenue grid.
+- **Guaranteed Active Selection**: Selecting a map card actively changes the scene and terrain that loads when deploying.
+
+### 6. Warehouse GLB Map Integration ([`WarehouseMap.js`](file:///frontend/src/maps/WarehouseMap.js))
+- **GLB Model Asset**: `frontend/public/assets/maps/warehouse.glb` (3.41 MB).
+- **Transforms & Alignment**:
+  - Scaled by `5.2x` and rotated by `90°` around Y axis, aligning the warehouse's 85m length with the West (Red) vs East (Blue) axis.
+  - Bottom floor aligned at `Y = 0.0`.
+  - Dimensions fit safely within server boundaries ($|X| \le 32m$, $|Z| \le 18m$, $|Y| \le 20m$).
+- **Verified Collision System**:
+  - Outer perimeter containment walls preventing players from escaping the facility.
+  - Solid floor collider preventing falling through ground.
+  - Decoupled AABB obstacle colliders for all interior crates, pallets, barrels, and room partitions.
+- **Guaranteed Safe Spawns**:
+  - Red Spawns (West): Safe positions with $\ge 0.85m$ clearance ($X \in [-28, -25], Z \in [-10, 10]$).
+  - Blue Spawns (East): Safe positions with $\ge 0.85m$ clearance ($X \in [20, 28], Z \in [-14, 8]$).
+  - FFA Spawns: Distributed across clear floor lanes.
+- **Indoor Tactical Lighting**:
+  - 4 warm high-bay ceiling point lights (3200K sodium vapor) with visible lamp fixtures.
+  - Directional clerestory skylight entering from roof trusses.
+  - Cool industrial twilight ambient fill.
+
+### 7. Tactical Settings & Preferences
+- Real-time **Master Volume** (0% to 100%).
+- Real-time **Look Sensitivity** (0.2x to 3.0x).
+- **Graphics Quality Presets** (High, Medium, Low).
+- Real-time **FPS Counter Display** toggle.
+- Preferences automatically persisted to `localStorage`.
+
+
 
 
 

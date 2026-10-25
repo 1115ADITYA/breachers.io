@@ -55,11 +55,23 @@ export class PlayerController {
 
     // Pointer Lock State
     this.isLocked = false;
+    this.enabled = false; // Disabled by default on menu screens (Chunk 6 requirement)
 
     // Weapon reference
     this.weapon = null;
 
     this.initEventListeners();
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.isLocked = false;
+      this.isMouseDown = false;
+      this.velocity.set(0, 0, 0);
+      Object.keys(this.keys).forEach(k => this.keys[k] = false);
+      this.exitLock();
+    }
   }
 
   setWeapon(weapon) {
@@ -95,6 +107,7 @@ export class PlayerController {
   }
 
   requestLock() {
+    if (!this.enabled) return;
     try {
       if (this.domElement && this.domElement.requestPointerLock) {
         this.domElement.requestPointerLock();
@@ -118,14 +131,14 @@ export class PlayerController {
     // Pointer Lock change listener
     document.addEventListener('pointerlockchange', () => {
       this.isLocked = document.pointerLockElement === this.domElement;
-      if (this.hud) {
+      if (this.hud && this.enabled) {
         this.hud.setPaused(!this.isLocked);
       }
     });
 
     // Mouse movement
     document.addEventListener('mousemove', (e) => {
-      if (!this.isLocked || this.isDead) return;
+      if (!this.enabled || !this.isLocked || this.isDead) return;
 
       this.yaw -= e.movementX * this.mouseSensitivity;
       this.pitch -= e.movementY * this.mouseSensitivity;
@@ -137,6 +150,7 @@ export class PlayerController {
 
     // Mouse click for shooting or acquiring pointer lock
     this.domElement.addEventListener('mousedown', (e) => {
+      if (!this.enabled) return;
       if (!this.isLocked) {
         this.requestLock();
         return;
@@ -162,7 +176,7 @@ export class PlayerController {
 
     // Keyboard controls
     window.addEventListener('keydown', (e) => {
-      if (this.isDead) return;
+      if (!this.enabled || this.isDead) return;
 
       switch (e.code) {
         case 'KeyW':
@@ -205,6 +219,8 @@ export class PlayerController {
     });
 
     window.addEventListener('keyup', (e) => {
+      if (!this.enabled) return;
+
       switch (e.code) {
         case 'KeyW':
         case 'ArrowUp':
@@ -233,12 +249,8 @@ export class PlayerController {
     });
   }
 
-  requestLock() {
-    this.domElement.requestPointerLock();
-  }
-
   update(delta) {
-    if (!this.isLocked) {
+    if (!this.enabled || !this.isLocked) {
       this.updateCamera();
       return;
     }

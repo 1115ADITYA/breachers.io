@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import { CollisionSystem } from './core/CollisionSystem.js';
 import { ContainerYardMap } from './maps/ContainerYardMap.js';
+import { WarehouseMap } from './maps/WarehouseMap.js';
+import { getMapConfig, DEFAULT_MAP_ID } from './maps/MapRegistry.js';
 import { PlayerController } from './player/PlayerController.js';
 import { Weapon } from './player/Weapon.js';
 import { DummyTarget } from './entities/DummyTarget.js';
 import { RemotePlayerManager } from './entities/RemotePlayerManager.js';
 import { GameNetwork } from './network/GameNetwork.js';
 import { HUD } from './ui/HUD.js';
+import { MenuPreviewScene } from './menu/MenuPreviewScene.js';
+import { MenuController } from './ui/MenuController.js';
 
 // -------------------------------------------------------------
 // 1. Scene & Renderer Initialization
@@ -30,7 +34,7 @@ skyCtx.fillRect(0, 0, 256, 512);
 const skyTexture = new THREE.CanvasTexture(skyCanvas);
 scene.background = skyTexture;
 
-// Subtle competitive distance fog (preserves target silhouette clarity up to 70m)
+// Subtle competitive distance fog
 scene.fog = new THREE.FogExp2(0x182030, 0.011);
 
 const camera = new THREE.PerspectiveCamera(
@@ -50,13 +54,11 @@ renderer.toneMappingExposure = 1.1;
 container.appendChild(renderer.domElement);
 
 // -------------------------------------------------------------
-// 2. Map & Environmental Lighting
+// 2. Environmental Lighting
 // -------------------------------------------------------------
-// Coherent hemisphere light: cool maritime sky bounce vs dark concrete ground bounce
 const hemiLight = new THREE.HemisphereLight(0xa0b4d4, 0x18202c, 0.95);
 scene.add(hemiLight);
 
-// Key directional sunlight (warm tactical golden-hour sun)
 const sunLight = new THREE.DirectionalLight(0xfff3e5, 1.45);
 sunLight.position.set(45, 65, 32);
 sunLight.castShadow = true;
@@ -71,23 +73,94 @@ sunLight.shadow.camera.bottom = -55;
 sunLight.shadow.bias = -0.0004;
 scene.add(sunLight);
 
-// Cool ambient fill light to soften harsh shadows
 const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.35);
 fillLight.position.set(-45, 35, -35);
 scene.add(fillLight);
 
-// Subtle ambient baseline to prevent pitch-black container interiors
 const ambientBase = new THREE.AmbientLight(0x161c28, 0.25);
 scene.add(ambientBase);
 
 // -------------------------------------------------------------
-// 3. Collision System & Container Yard Map
+// 3. Collision System & Map Management
 // -------------------------------------------------------------
 const collisionSystem = new CollisionSystem();
 
-const map = new ContainerYardMap();
-scene.add(map.getMesh());
-collisionSystem.setColliders(map.getColliders());
+let currentMap = null;
+let currentMapId = null;
+
+// Target Dummies group
+const targetsGroup = new THREE.Group();
+scene.add(targetsGroup);
+let targets = [];
+
+function setupTargets(mapId) {
+  // Clear old targets
+  while (targetsGroup.children.length > 0) {
+    targetsGroup.remove(targetsGroup.children[0]);
+  }
+
+  if (mapId === 'warehouse') {
+    targets = [
+      new DummyTarget(0, 0, 6, -Math.PI / 2, 'target'),
+      new DummyTarget(-10, 0, -6, Math.PI / 4, 'blue'),
+      new DummyTarget(10, 0, 6, -Math.PI / 4, 'blue'),
+      new DummyTarget(-20, 0, 0, Math.PI / 2, 'red')
+    ];
+  } else {
+    // Container Yard default targets
+    targets = [
+      new DummyTarget(0, 0, 0, -Math.PI / 2, 'target'),
+      new DummyTarget(-10, 0, -22, Math.PI / 4, 'blue'),
+      new DummyTarget(10, 0, 22, -Math.PI / 4, 'blue'),
+      new DummyTarget(0, 2.6, 0, 0, 'red')
+    ];
+  }
+
+  targets.forEach(t => targetsGroup.add(t.group));
+  if (weapon) {
+    weapon.setTargets(targets);
+  }
+}
+
+/**
+ * Load or switch active playable map
+ * @param {string} mapId 'container_yard' | 'warehouse'
+ * @param {Function} [onProgress]
+ * @returns {Promise<void>}
+ */
+async function loadMap(mapId, onProgress = null) {
+  if (currentMap && currentMapId === mapId && currentMap.isLoaded !== false) {
+    return;
+  }
+
+  // Remove existing map from scene
+  if (currentMap) {
+    scene.remove(currentMap.getMesh());
+    if (currentMap.dispose) {
+      currentMap.dispose();
+    }
+    collisionSystem.clear();
+  }
+
+  currentMapId = mapId;
+
+  if (mapId === 'warehouse') {
+    const warehouse = new WarehouseMap();
+    await warehouse.load(onProgress);
+    currentMap = warehouse;
+  } else {
+    currentMap = new ContainerYardMap();
+    if (onProgress) onProgress(100);
+  }
+
+  scene.add(currentMap.getMesh());
+  collisionSystem.setColliders(currentMap.getColliders());
+  setupTargets(mapId);
+
+  const arenaTitle = `${currentMap.name.toUpperCase()} — ${currentMap.subtitle ? currentMap.subtitle.toUpperCase() : 'SECTOR 04'}`;
+  hud.setArenaName(arenaTitle);
+  console.log(`[MapLoader] Switched active map to: ${currentMap.name} (${currentMap.getColliders().length} colliders registered)`);
+}
 
 // -------------------------------------------------------------
 // 4. Remote Player Manager & Networking Setup
@@ -96,15 +169,18 @@ const remotePlayerManager = new RemotePlayerManager(scene);
 const gameNetwork = new GameNetwork();
 
 let player = null;
+let weapon = null;
 
+// Application State Machine: 'MENU' | 'LOBBY' | 'LOADING' | 'GAMEPLAY'
+let appState = 'MENU';
+
+// -------------------------------------------------------------
+// 5. In-Game HUD Initialization
+// -------------------------------------------------------------
 const hud = new HUD({
-  onPlayClick: (username) => {
-    // 1. Connect to Spring Boot WebSocket if not already connected
-    if (!gameNetwork.isConnected && !gameNetwork.isConnecting) {
-      gameNetwork.connect(username);
-    }
-    // 2. Request pointer lock for first-person controls
-    if (player) {
+  onPlayClick: () => {
+    // If paused in-game, resume pointer lock
+    if (player && player.enabled) {
       player.requestLock();
     }
   },
@@ -112,6 +188,45 @@ const hud = new HUD({
     gameNetwork.createRoom(username, mode);
   },
   onJoinRoom: (code, username) => {
+    gameNetwork.joinRoom(code, username);
+  },
+  onLeaveRoom: () => {
+    gameNetwork.leaveRoom();
+    returnToMenu();
+  },
+  onSetGameMode: (mode) => {
+    gameNetwork.setGameMode(mode);
+  },
+  onSetTeam: (team) => {
+    gameNetwork.setTeam(team);
+  },
+  onStartMatch: () => {
+    gameNetwork.startMatch();
+  },
+  onReturnToLobby: () => {
+    gameNetwork.returnToLobby();
+    returnToLobby();
+  }
+});
+
+// Initially hide in-game HUD until player enters match
+hud.hide();
+
+// -------------------------------------------------------------
+const menuController = new MenuController({
+  onDeployMatch: (selectedMapId, username) => {
+    deployIntoMatch(selectedMapId, username);
+  },
+  onCreateRoom: (username, mode, selectedMapId) => {
+    if (!gameNetwork.isConnected && !gameNetwork.isConnecting) {
+      gameNetwork.connect(username);
+    }
+    gameNetwork.createRoom(username, mode);
+  },
+  onJoinRoom: (code, username) => {
+    if (!gameNetwork.isConnected && !gameNetwork.isConnecting) {
+      gameNetwork.connect(username);
+    }
     gameNetwork.joinRoom(code, username);
   },
   onLeaveRoom: () => {
@@ -128,10 +243,107 @@ const hud = new HUD({
   },
   onReturnToLobby: () => {
     gameNetwork.returnToLobby();
+  },
+  onSettingsChanged: (newSettings) => {
+    applySettings(newSettings);
   }
 });
 
-// Configure Network Callbacks
+// -------------------------------------------------------------
+// 6. 3D Menu Preview Scene Initialization
+// -------------------------------------------------------------
+const previewMount = document.getElementById('preview-canvas-mount');
+const menuPreviewScene = new MenuPreviewScene(previewMount);
+menuController.setPreviewScene(menuPreviewScene);
+
+function applySettings(settings) {
+  if (player && settings.mouseSensitivity !== undefined) {
+    player.mouseSensitivity = 0.0022 * settings.mouseSensitivity;
+  }
+  const fpsPill = document.getElementById('fps-counter');
+  if (fpsPill) {
+    fpsPill.style.display = settings.showFps ? 'flex' : 'none';
+  }
+}
+
+// -------------------------------------------------------------
+// 7. Local Player Controller & Weapon
+// -------------------------------------------------------------
+player = new PlayerController(camera, renderer.domElement, collisionSystem, hud);
+
+// Weapons setup
+weapon = new Weapon(camera, scene, collisionSystem, hud, gameNetwork);
+player.setWeapon(weapon);
+
+// Initially player is disabled (Menu mode: mouse unlocked, no controls)
+player.setEnabled(false);
+
+// Apply initial settings
+applySettings(menuController.getSettings());
+
+// -------------------------------------------------------------
+// 8. Match Deployment & State Transition Methods
+// -------------------------------------------------------------
+async function deployIntoMatch(selectedMapId, username) {
+  appState = 'LOADING';
+  const cfg = getMapConfig(selectedMapId);
+
+  menuController.showLoading(cfg.name, async () => {
+    try {
+      await loadMap(selectedMapId);
+
+      // Connect to Spring Boot WebSocket if not connected
+      if (!gameNetwork.isConnected && !gameNetwork.isConnecting) {
+        gameNetwork.connect(username);
+      }
+
+      // Safe spawn point from active map
+      const startSpawn = currentMap.getRandomSpawn('red');
+      player.spawnAt(startSpawn.x, startSpawn.y, startSpawn.z, startSpawn.rotationY);
+
+      // Switch to gameplay state
+      menuController.hideMenu();
+      hud.show();
+      player.setEnabled(true);
+      player.requestLock();
+      hud.updateHealth(100);
+      weapon.selectWeapon(0);
+
+      appState = 'GAMEPLAY';
+      console.log(`[Deploy] Deployed into ${cfg.name} as ${username}`);
+    } catch (err) {
+      console.error('[Deploy] Failed to load map:', err);
+      alert(`Failed to load ${cfg.name}: ${err.message || 'Asset loading error'}. Reverting to Container Yard.`);
+      await loadMap('container_yard');
+      menuController.hideLoading();
+      menuController.showMenu();
+      appState = 'MENU';
+    }
+  });
+}
+
+function returnToMenu() {
+  appState = 'MENU';
+  if (player) {
+    player.setEnabled(false);
+  }
+  hud.hide();
+  menuController.showMenu();
+}
+
+function returnToLobby() {
+  appState = 'LOBBY';
+  if (player) {
+    player.setEnabled(false);
+  }
+  hud.hide();
+  menuController.showMenu();
+  menuController.navigateTo('LOBBY');
+}
+
+// -------------------------------------------------------------
+// 9. Configure Network Callbacks
+// -------------------------------------------------------------
 gameNetwork.onStatusChange = (status, playerId) => {
   hud.setNetworkStatus(status, playerId);
 };
@@ -144,12 +356,18 @@ gameNetwork.onWelcome = (welcomeMsg) => {
   console.log(`[Multiplayer] Welcomed by server as ${welcomeMsg.username} (${welcomeMsg.playerId})`);
   hud.setNetworkStatus('connected', welcomeMsg.playerId);
 
-  // Position local player at server-assigned spawn point
-  if (player) {
-    player.spawnAt(welcomeMsg.x, welcomeMsg.y, welcomeMsg.z, welcomeMsg.yaw);
+  // Position local player at safe spawn point
+  if (player && appState === 'GAMEPLAY') {
+    // If on warehouse, check if server coordinates are safe, otherwise use map spawn
+    if (currentMapId === 'warehouse') {
+      const safeSpawn = currentMap.getRandomSpawn('red');
+      player.spawnAt(safeSpawn.x, safeSpawn.y, safeSpawn.z, safeSpawn.rotationY);
+    } else {
+      player.spawnAt(welcomeMsg.x, welcomeMsg.y, welcomeMsg.z, welcomeMsg.yaw);
+    }
   }
 
-  // Populate existing peers in current session
+  // Populate existing peers
   remotePlayerManager.clear();
   if (welcomeMsg.players) {
     welcomeMsg.players.forEach((p) => {
@@ -177,24 +395,8 @@ gameNetwork.onError = (errMsg) => {
   hud.showError(errMsg);
 };
 
-// -------------------------------------------------------------
-// 5. Local Player Controller & Weapon
-// -------------------------------------------------------------
-player = new PlayerController(camera, renderer.domElement, collisionSystem, hud);
-
-// Initial fallback spawn before server welcome
-const startSpawn = map.getRandomSpawn('red');
-player.spawnAt(startSpawn.x, startSpawn.y, startSpawn.z, startSpawn.rotationY);
-
-// Weapon setup
-const weapon = new Weapon(camera, scene, collisionSystem, hud, gameNetwork);
-player.setWeapon(weapon);
-
-// -------------------------------------------------------------
-// 5b. Combat Networking Event Routing
-// -------------------------------------------------------------
+// Combat Networking Event Routing
 gameNetwork.onShotFired = (data) => {
-  // If shot was fired by another connected peer, render remote muzzle flash & tracer
   if (data.shooterId !== gameNetwork.playerId) {
     remotePlayerManager.triggerRemoteShot(data.shooterId, data.origin, data.direction, data.weapon);
   }
@@ -211,14 +413,12 @@ gameNetwork.onHealthUpdated = (data) => {
 };
 
 gameNetwork.onPlayerHit = (data) => {
-  // If shooter is local player, show crosshair hitmarker & floating damage feedback
   if (data.shooterId === gameNetwork.playerId) {
     hud.showHitmarker(data.isHeadshot);
     hud.showDamageNumber(data.damage, data.isHeadshot, window.innerWidth / 2, window.innerHeight / 2);
     weapon.playHitmarkerSound(data.isHeadshot);
   }
 
-  // If victim is local player, trigger damage screen flash vignette
   if (data.victimId === gameNetwork.playerId) {
     hud.flashDamageVignette();
   }
@@ -240,10 +440,17 @@ gameNetwork.onPlayerRespawned = (data) => {
   console.log(`[Combat] Respawn: Player ${data.playerId} at (${data.x}, ${data.y}, ${data.z})`);
 
   if (data.playerId === gameNetwork.playerId) {
-    player.spawnAt(data.x, data.y, data.z, data.yaw);
+    // If warehouse, ensure respawn is safely inside warehouse bounds
+    if (currentMapId === 'warehouse') {
+      const team = player.team || 'red';
+      const safeSpawn = currentMap.getRandomSpawn(team.toLowerCase());
+      player.spawnAt(safeSpawn.x, safeSpawn.y, safeSpawn.z, safeSpawn.rotationY);
+    } else {
+      player.spawnAt(data.x, data.y, data.z, data.yaw);
+    }
     hud.hideDeathScreen();
     hud.updateHealth(data.health);
-    weapon.selectWeapon(0); // Restore primary assault rifle
+    weapon.selectWeapon(0);
   } else {
     remotePlayerManager.respawnPlayer(data.playerId, data.x, data.y, data.z, data.yaw);
   }
@@ -253,10 +460,9 @@ gameNetwork.onKillFeed = (data) => {
   hud.addKillFeedEntry(data.killerName, data.victimName, data.weapon);
 };
 
-// -------------------------------------------------------------
-// 5c. Chunk 4: Private Rooms, TDM/FFA Matches & Spawn Protection
-// -------------------------------------------------------------
+// Private Rooms, TDM/FFA Matches & Spawn Protection
 gameNetwork.onRoomState = (roomState) => {
+  menuController.updateRoomState(roomState, gameNetwork.playerId);
   hud.updateRoomState(roomState, gameNetwork.playerId);
   if (roomState.players) {
     roomState.players.forEach((p) => {
@@ -267,17 +473,30 @@ gameNetwork.onRoomState = (roomState) => {
   }
 };
 
-gameNetwork.onMatchStarted = (data) => {
+gameNetwork.onMatchStarted = async (data) => {
   console.log(`[Match] Started in room ${data.roomCode} (${data.mode})`);
   hud.setPaused(false);
-  if (player) {
+
+  // Deploy into selected map
+  const selectedMapId = menuController.getSelectedMapId();
+  await loadMap(selectedMapId);
+
+  menuController.hideMenu();
+  hud.show();
+  player.setEnabled(true);
+
+  if (currentMapId === 'warehouse') {
+    const team = (data.team || 'red').toLowerCase();
+    const spawn = currentMap.getRandomSpawn(team);
+    player.spawnAt(spawn.x, spawn.y, spawn.z, spawn.rotationY);
+  } else {
     player.spawnAt(data.x, data.y, data.z, data.yaw);
-    player.requestLock();
   }
+
+  player.requestLock();
   hud.updateHealth(100);
-  if (weapon) {
-    weapon.selectWeapon(0);
-  }
+  weapon.selectWeapon(0);
+  appState = 'GAMEPLAY';
 };
 
 gameNetwork.onScoreUpdate = (data) => {
@@ -303,22 +522,12 @@ gameNetwork.onSpawnProtection = (data) => {
 };
 
 // -------------------------------------------------------------
-// 6. Practice Target Dummies (Shooting Feedback)
+// 10. Initial Map Preload (Container Yard)
 // -------------------------------------------------------------
-const targets = [
-  new DummyTarget(0, 0, 0, -Math.PI / 2, 'target'),
-  new DummyTarget(-10, 0, -22, Math.PI / 4, 'blue'),
-  new DummyTarget(10, 0, 22, -Math.PI / 4, 'blue'),
-  new DummyTarget(0, 2.6, 0, 0, 'red')
-];
-
-targets.forEach(target => {
-  scene.add(target.group);
-});
-weapon.setTargets(targets);
+loadMap('container_yard');
 
 // -------------------------------------------------------------
-// 7. Window Resize Handling
+// 11. Window Resize Handling
 // -------------------------------------------------------------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -327,7 +536,7 @@ window.addEventListener('resize', () => {
 });
 
 // -------------------------------------------------------------
-// 8. Main Game Loop
+// 12. Main Game Loop
 // -------------------------------------------------------------
 let clock = new THREE.Clock();
 let frameCount = 0;
@@ -338,20 +547,28 @@ function animate() {
 
   const delta = Math.min(clock.getDelta(), 0.1);
 
-  // 1. Update Local Player Physics & Camera
-  player.update(delta);
+  // 1. Update Local Player Physics & Camera (Only during gameplay when unlocked)
+  if (player && player.enabled) {
+    player.update(delta);
 
-  // 2. Transmit Local Movement over WebSocket (rate-limited inside GameNetwork to 20Hz)
-  if (gameNetwork.isConnected && player.isLocked) {
-    gameNetwork.sendMovement(
-      player.position.x,
-      player.position.y,
-      player.position.z,
-      player.yaw,
-      player.pitch,
-      player.isMoving,
-      player.isSprinting
-    );
+    // 2. Transmit Local Movement over WebSocket (rate-limited inside GameNetwork to 20Hz)
+    if (gameNetwork.isConnected && player.isLocked) {
+      gameNetwork.sendMovement(
+        player.position.x,
+        player.position.y,
+        player.position.z,
+        player.yaw,
+        player.pitch,
+        player.isMoving,
+        player.isSprinting
+      );
+    }
+  } else {
+    // In menu mode: slowly rotate camera around arena for cinematic background effect
+    camera.position.x = Math.sin(performance.now() * 0.0001) * 35;
+    camera.position.z = Math.cos(performance.now() * 0.0001) * 35;
+    camera.position.y = 15;
+    camera.lookAt(0, 4, 0);
   }
 
   // 3. Update Remote Peer Models & Interpolation
@@ -373,5 +590,5 @@ function animate() {
   }
 }
 
-// Start loop
+// Start rendering loop
 animate();

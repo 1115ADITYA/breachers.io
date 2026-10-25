@@ -341,6 +341,11 @@ export class Weapon {
     }
   }
 
+  selectWeapon(slotOrType) {
+    if (slotOrType === 0) slotOrType = 1;
+    this.switchWeapon(slotOrType);
+  }
+
   switchWeapon(slotOrType) {
     let targetType = null;
     if (slotOrType === 1 || slotOrType === '1' || slotOrType === 'ASSAULT') targetType = 'ASSAULT';
