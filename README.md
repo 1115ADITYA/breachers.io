@@ -137,3 +137,47 @@ Production assets are generated in `frontend/dist/`.
   - Allowed origin by default: `http://localhost:5173`, `http://127.0.0.1:5173`.
   - Allowed methods: `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS`, `PATCH`.
 - **Frontend Proxy**: Configured in `frontend/vite.config.js` to proxy `/api` requests to `http://localhost:8081` in local development.
+
+---
+
+## Real-Time Multiplayer (Spring WebSocket)
+
+The multiplayer backend is implemented using native Spring Boot WebSocket support at endpoint:
+
+```
+ws://localhost:8081/ws/game
+```
+
+### Protocol Overview
+
+1. **Client $\to$ Server**:
+   - `JOIN`: `{"type":"JOIN","username":"Operator_Name"}`
+   - `MOVE`: `{"type":"MOVE","x":0.0,"y":0.0,"z":0.0,"yaw":1.57,"pitch":0.0,"isMoving":true,"isSprinting":false}` (transmitted at 20Hz)
+   - `LEAVE`: `{"type":"LEAVE"}`
+   - `PING`: `{"type":"PING"}`
+2. **Server $\to$ Client**:
+   - `WELCOME`: `{"type":"WELCOME","playerId":"p_xxxxxxxx","username":"Operator_Name","x":...,"y":...,"z":...,"yaw":...,"players":[...]}`
+   - `PLAYER_JOINED`: `{"type":"PLAYER_JOINED","player":{...}}`
+   - `PLAYER_MOVED`: `{"type":"PLAYER_MOVED","id":"p_xxxxxxxx","x":...,"y":...,"z":...,"yaw":...,"pitch":...,"isMoving":...,"isSprinting":...,"timestamp":...}`
+   - `PLAYER_LEFT`: `{"type":"PLAYER_LEFT","id":"p_xxxxxxxx"}`
+   - `ERROR`: `{"type":"ERROR","message":"..."}`
+   - `PONG`: `{"type":"PONG","timestamp":...}`
+
+### Testing Multiplayer (2+ Clients)
+
+#### Automated Test Suite
+To execute the automated 2-client synchronization test (verifies join, snapshot receipt, bidirectional movement replication, and departure broadcast):
+```bash
+node scratch/test-multiplayer-two-clients.js
+```
+
+#### Manual Dual-Browser Test
+1. Ensure the Spring Boot backend (`:8081`) and Vite frontend (`:5173`) are running.
+2. Open Browser Window 1 at `http://localhost:5173`:
+   - Enter callsign (e.g. `Alpha_One`).
+   - Click **DEPLOY ONLINE**.
+3. Open Browser Window 2 (or an Incognito window) at `http://localhost:5173`:
+   - Enter callsign (e.g. `Bravo_Two`).
+   - Click **DEPLOY ONLINE**.
+4. Both players will see each other's 3D character model, overhead username billboards, and real-time interpolated movement inside the Container Yard map.
+
