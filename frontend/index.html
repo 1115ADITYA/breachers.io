@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Breachers.io — 3D Multiplayer FPS</title>
+    <meta name="description" content="Fast-paced browser-based 3D multiplayer FPS built with Three.js and Spring Boot." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+
+    <div id="hud-overlay">
+      <header class="hud-header">
+        <div class="brand">
+          <span class="brand-tag">PROJECT</span>
+          <h1 class="brand-title">BREACHERS<span class="accent">.IO</span></h1>
+        </div>
+        <div class="hud-status-group">
+          <div id="backend-status" class="status-badge checking">
+            <span class="indicator-dot"></span>
+            <span class="status-label">BACKEND: CHECKING</span>
+          </div>
+          <div id="fps-counter" class="status-badge stats">
+            <span>FPS: --</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="hud-center">
+        <div class="setup-card">
+          <div class="badge-pill">CHUNK 0 COMPLETE</div>
+          <h2>FOUNDATION READY</h2>
+          <p class="subtitle">Vite + Three.js renderer active & Spring Boot backend connected.</p>
+          
+          <div class="system-diagnostics">
+            <div class="diag-row">
+              <span class="diag-key">Three.js Engine</span>
+              <span id="engine-status" class="diag-val active">WebGL Active</span>
+            </div>
+            <div class="diag-row">
+              <span class="diag-key">Backend Gateway</span>
+              <span id="api-status-detail" class="diag-val checking">Connecting to :8081...</span>
+            </div>
+            <div class="diag-row">
+              <span class="diag-key">CORS Config</span>
+              <span class="diag-val active">localhost:5173 Allowed</span>
+            </div>
+            <div class="diag-row">
+              <span class="diag-key">Architecture</span>
+              <span class="diag-val">Decoupled Full-Stack</span>
+            </div>
+          </div>
+
+          <div class="action-footer">
+            <button id="btn-recheck-health" class="btn-primary" type="button">
+              <span class="btn-icon">⚡</span> PING HEALTH ENDPOINT
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="hud-footer">
+        <span class="footnote">Client: Vite + Three.js | Server: Spring Boot Java 21 | Target: Realtime Multiplayer FPS</span>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
