@@ -1,23 +1,28 @@
 import * as THREE from 'three';
+import { TextureGenerator } from './TextureGenerator.js';
+import { ContainerFactory } from './ContainerFactory.js';
+import { IndustrialProps } from './IndustrialProps.js';
 
 /**
  * ContainerYardMap
- * Complete, playable low-poly 3D FPS map for Breachers.io.
- * Generates an industrial freight shipping yard with containers, tactical cover,
- * flanking routes, perimeter security walls, and dedicated TDM / FFA spawn zones.
+ * Complete, highly polished competitive 3D FPS map for Breachers.io.
+ * Features an authentic industrial freight terminal with corrugated ISO containers,
+ * detailed wooden pallets, cargo crates, jersey barriers, chemical barrels,
+ * tire stacks, cable reels, floodlight towers, a warehouse loading facade,
+ * exterior harbor gantry cranes, and strictly separated Red/Blue/FFA spawns.
  */
 export class ContainerYardMap {
   constructor() {
     this.name = 'Container Yard';
     this.group = new THREE.Group();
-    this.colliders = []; // { box: THREE.Box3, type: string, mesh: THREE.Mesh }
+    this.colliders = []; // Array of { box: THREE.Box3, type: string, mesh: THREE.Object3D }
 
-    // Map Dimensions
-    this.width = 110;  // X axis: -55 to +55 (West to East)
-    this.depth = 80;   // Z axis: -40 to +40 (North to South)
+    // Map Dimensions (X from -55 to +55, Z from -40 to +40)
+    this.width = 110;
+    this.depth = 80;
     this.wallHeight = 6.0;
 
-    // Spawns
+    // Preserved Server-Authoritative Spawn Points
     this.spawns = {
       red: [
         { x: -46, y: 0, z: -10, rotationY: Math.PI / 2 },
@@ -43,125 +48,50 @@ export class ContainerYardMap {
       ]
     };
 
+    this.containerFactory = new ContainerFactory();
+    this.props = new IndustrialProps();
     this.materials = this.initMaterials();
+
     this.buildMap();
   }
 
   initMaterials() {
-    // Procedural asphalt texture via Canvas
-    const groundCanvas = document.createElement('canvas');
-    groundCanvas.width = 512;
-    groundCanvas.height = 512;
-    const ctx = groundCanvas.getContext('2d');
-    
-    // Dark asphalt base
-    ctx.fillStyle = '#1c2028';
-    ctx.fillRect(0, 0, 512, 512);
-
-    // Subtle concrete/asphalt noise
-    for (let i = 0; i < 4000; i++) {
-      const alpha = Math.random() * 0.08;
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
-    }
-
-    // Yellow tactical ground lane stripes
-    ctx.strokeStyle = '#e69500';
-    ctx.lineWidth = 6;
-    ctx.setLineDash([24, 24]);
-    ctx.beginPath();
-    ctx.moveTo(64, 0); ctx.lineTo(64, 512);
-    ctx.moveTo(448, 0); ctx.lineTo(448, 512);
-    ctx.moveTo(0, 256); ctx.lineTo(512, 256);
-    ctx.stroke();
-
-    const groundTex = new THREE.CanvasTexture(groundCanvas);
-    groundTex.wrapS = THREE.RepeatWrapping;
-    groundTex.wrapT = THREE.RepeatWrapping;
-    groundTex.repeat.set(12, 9);
-
-    // Shared Materials
     return {
       ground: new THREE.MeshStandardMaterial({
-        map: groundTex,
+        map: TextureGenerator.createGroundTexture(),
         roughness: 0.85,
-        metalness: 0.1
+        metalness: 0.15
       }),
-      wall: new THREE.MeshStandardMaterial({
-        color: 0x242a36,
+      perimeterWall: new THREE.MeshStandardMaterial({
+        color: 0x1e2530,
         roughness: 0.7,
-        metalness: 0.2
+        metalness: 0.25
+      }),
+      warehouseWall: new THREE.MeshStandardMaterial({
+        map: TextureGenerator.createWarehouseWallTexture(),
+        roughness: 0.65,
+        metalness: 0.4
       }),
       wallTrim: new THREE.MeshStandardMaterial({
-        color: 0xff6600,
-        roughness: 0.4,
-        metalness: 0.5
-      }),
-      barrier: new THREE.MeshStandardMaterial({
-        color: 0x596475,
-        roughness: 0.8,
-        metalness: 0.1
-      }),
-      crateWood: new THREE.MeshStandardMaterial({
-        color: 0xa87544,
-        roughness: 0.7,
-        metalness: 0.05
-      }),
-      crateMetal: new THREE.MeshStandardMaterial({
-        color: 0x3d4757,
+        map: TextureGenerator.createHazardStripeTexture(512, 32),
         roughness: 0.5,
-        metalness: 0.6
-      }),
-      barrelRed: new THREE.MeshStandardMaterial({
-        color: 0xd92d20,
-        roughness: 0.4,
-        metalness: 0.4
-      }),
-      barrelYellow: new THREE.MeshStandardMaterial({
-        color: 0xfdb022,
-        roughness: 0.4,
-        metalness: 0.4
-      }),
-      // Container color variants
-      containerRed: new THREE.MeshStandardMaterial({
-        color: 0xb42318,
-        roughness: 0.6,
-        metalness: 0.3
-      }),
-      containerBlue: new THREE.MeshStandardMaterial({
-        color: 0x175cd3,
-        roughness: 0.6,
-        metalness: 0.3
-      }),
-      containerOrange: new THREE.MeshStandardMaterial({
-        color: 0xf79009,
-        roughness: 0.6,
-        metalness: 0.3
-      }),
-      containerGreen: new THREE.MeshStandardMaterial({
-        color: 0x067647,
-        roughness: 0.6,
-        metalness: 0.3
-      }),
-      containerGray: new THREE.MeshStandardMaterial({
-        color: 0x475467,
-        roughness: 0.6,
-        metalness: 0.3
-      }),
-      containerRust: new THREE.MeshStandardMaterial({
-        color: 0x7a3a22,
-        roughness: 0.7,
-        metalness: 0.3
+        metalness: 0.2
       }),
       spawnPadRed: new THREE.MeshStandardMaterial({
-        color: 0xff3344,
-        roughness: 0.5,
+        color: 0xdc2626,
+        roughness: 0.55,
         metalness: 0.2
       }),
       spawnPadBlue: new THREE.MeshStandardMaterial({
-        color: 0x0088ff,
-        roughness: 0.5,
+        color: 0x2563eb,
+        roughness: 0.55,
         metalness: 0.2
+      }),
+      chainlinkFence: new THREE.MeshStandardMaterial({
+        color: 0x64748b,
+        roughness: 0.4,
+        metalness: 0.8,
+        wireframe: true
       })
     };
   }
@@ -169,10 +99,12 @@ export class ContainerYardMap {
   buildMap() {
     this.buildGround();
     this.buildPerimeterWalls();
+    this.buildWarehouseLoadingBay();
     this.buildSpawnZones();
     this.buildShippingContainers();
-    this.buildTacticalCover();
+    this.buildTacticalProps();
     this.buildLightingStructures();
+    this.buildExteriorLandmarks();
   }
 
   buildGround() {
@@ -183,10 +115,10 @@ export class ContainerYardMap {
     ground.receiveShadow = true;
     this.group.add(ground);
 
-    // Ground collider: solid plane at y = 0
+    // Solid ground plane collider at y = 0
     const groundBox = new THREE.Box3(
-      new THREE.Vector3(-this.width / 2, -1, -this.depth / 2),
-      new THREE.Vector3(this.width / 2, 0, this.depth / 2)
+      new THREE.Vector3(-this.width / 2, -1.0, -this.depth / 2),
+      new THREE.Vector3(this.width / 2, 0.0, this.depth / 2)
     );
     this.colliders.push({ box: groundBox, type: 'ground', mesh: ground });
   }
@@ -198,262 +130,297 @@ export class ContainerYardMap {
     const h = this.wallHeight;
 
     const wallConfigs = [
-      // North Wall
+      // North Wall (Behind Warehouse Bay)
       { w: this.width + thickness * 2, h, d: thickness, x: 0, y: h / 2, z: -halfD - thickness / 2 },
       // South Wall
       { w: this.width + thickness * 2, h, d: thickness, x: 0, y: h / 2, z: halfD + thickness / 2 },
-      // West Wall
+      // West Wall (Red Spawn Side)
       { w: thickness, h, d: this.depth, x: -halfW - thickness / 2, y: h / 2, z: 0 },
-      // East Wall
+      // East Wall (Blue Spawn Side)
       { w: thickness, h, d: this.depth, x: halfW + thickness / 2, y: h / 2, z: 0 }
     ];
 
     wallConfigs.forEach(c => {
       const geo = new THREE.BoxGeometry(c.w, c.h, c.d);
-      const wall = new THREE.Mesh(geo, this.materials.wall);
+      const wall = new THREE.Mesh(geo, this.materials.perimeterWall);
       wall.position.set(c.x, c.y, c.z);
       wall.castShadow = true;
       wall.receiveShadow = true;
       this.group.add(wall);
 
-      // Hazard top trim
-      const trimGeo = new THREE.BoxGeometry(c.w, 0.3, c.d + 0.2);
+      // Warning hazard cap on top of perimeter wall
+      const trimGeo = new THREE.BoxGeometry(c.w, 0.25, c.d + 0.1);
       const trim = new THREE.Mesh(trimGeo, this.materials.wallTrim);
-      trim.position.set(c.x, h + 0.15, c.z);
+      trim.position.set(c.x, h + 0.125, c.z);
       this.group.add(trim);
 
-      // Add wall collider
+      // Industrial chainlink security fencing on top of wall
+      const fenceGeo = new THREE.BoxGeometry(c.w, 1.8, 0.05);
+      const fence = new THREE.Mesh(fenceGeo, this.materials.chainlinkFence);
+      fence.position.set(c.x, h + 1.15, c.z);
+      this.group.add(fence);
+
+      // AABB Wall Collider
       const box = new THREE.Box3();
       box.setFromObject(wall);
       this.colliders.push({ box, type: 'wall', mesh: wall });
     });
   }
 
+  /**
+   * North perimeter architectural warehouse dock facade
+   */
+  buildWarehouseLoadingBay() {
+    const bayGroup = new THREE.Group();
+    bayGroup.position.set(0, 0, -38.5);
+
+    // Raised concrete loading dock platform
+    const dockGeo = new THREE.BoxGeometry(50, 0.9, 3.0);
+    const dock = new THREE.Mesh(dockGeo, this.materials.perimeterWall);
+    dock.position.set(0, 0.45, 0);
+    dock.castShadow = true;
+    dock.receiveShadow = true;
+    bayGroup.add(dock);
+
+    // Hazard stripe on loading dock ledge
+    const stripeGeo = new THREE.BoxGeometry(50, 0.12, 0.2);
+    const stripe = new THREE.Mesh(stripeGeo, this.materials.wallTrim);
+    stripe.position.set(0, 0.85, 1.45);
+    bayGroup.add(stripe);
+
+    // 3 Industrial roll-up shutter doors
+    const doorGeo = new THREE.BoxGeometry(9.0, 4.2, 0.3);
+    const shutterMat = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      roughness: 0.5,
+      metalness: 0.6
+    });
+
+    [-16, 0, 16].forEach(dx => {
+      const shutter = new THREE.Mesh(doorGeo, shutterMat);
+      shutter.position.set(dx, 3.0, -0.8);
+      bayGroup.add(shutter);
+    });
+
+    this.group.add(bayGroup);
+
+    // Dock platform collider
+    const box = new THREE.Box3(
+      new THREE.Vector3(-25, 0, -40),
+      new THREE.Vector3(25, 0.9, -37)
+    );
+    this.colliders.push({ box, type: 'dock', mesh: dock });
+  }
+
   buildSpawnZones() {
-    // Red Base (West)
+    // Red Base (West) Ground Tactical Pad
     const redBase = new THREE.Mesh(
-      new THREE.BoxGeometry(10, 0.05, 18),
+      new THREE.BoxGeometry(10, 0.04, 18),
       this.materials.spawnPadRed
     );
-    redBase.position.set(-46, 0.025, 0);
+    redBase.position.set(-46, 0.02, 0);
     redBase.receiveShadow = true;
     this.group.add(redBase);
 
-    // Blue Base (East)
+    // Blue Base (East) Ground Tactical Pad
     const blueBase = new THREE.Mesh(
-      new THREE.BoxGeometry(10, 0.05, 18),
+      new THREE.BoxGeometry(10, 0.04, 18),
       this.materials.spawnPadBlue
     );
-    blueBase.position.set(46, 0.025, 0);
+    blueBase.position.set(46, 0.02, 0);
     blueBase.receiveShadow = true;
     this.group.add(blueBase);
 
-    // Protective bunker containers behind each spawn
-    this.createContainer(-50, 0, 0, 2.5, 2.6, 14, this.materials.containerRed);
-    this.createContainer(50, 0, 0, 2.5, 2.6, 14, this.materials.containerBlue);
+    // Protective bunker containers behind each spawn zone
+    this.placeContainer(-50, 0, 0, 2.5, 2.6, 14, '#b91c1c', 0, 'RED-BASE');
+    this.placeContainer(50, 0, 0, 2.5, 2.6, 14, '#1d4ed8', 0, 'BLUE-BASE');
   }
 
   /**
-   * Helper to create a solid shipping container with structural ribs
+   * Helper to place a stylized ISO container and register its AABB collider
    */
-  createContainer(x, y, z, width, height, length, material, rotY = 0) {
-    const containerGroup = new THREE.Group();
-    containerGroup.position.set(x, y + height / 2, z);
-    containerGroup.rotation.y = rotY;
-
-    // Main box body
-    const bodyGeo = new THREE.BoxGeometry(width, height, length);
-    const body = new THREE.Mesh(bodyGeo, material);
-    body.castShadow = true;
-    body.receiveShadow = true;
-    containerGroup.add(body);
-
-    // Corner posts (industrial detail)
-    const postGeo = new THREE.BoxGeometry(0.25, height + 0.05, 0.25);
-    const postMat = this.materials.wall;
-    const halfW = width / 2;
-    const halfL = length / 2;
-
-    const corners = [
-      [-halfW, -halfL],
-      [halfW, -halfL],
-      [-halfW, halfL],
-      [halfW, halfL]
-    ];
-
-    corners.forEach(([cx, cz]) => {
-      const post = new THREE.Mesh(postGeo, postMat);
-      post.position.set(cx, 0, cz);
-      containerGroup.add(post);
-    });
-
-    this.group.add(containerGroup);
-
-    // Register AABB Collider for physics/collision
-    const box = new THREE.Box3();
-    box.setFromObject(containerGroup);
-    this.colliders.push({ box, type: 'container', mesh: containerGroup });
-
-    return containerGroup;
+  placeContainer(x, y, z, width, height, length, baseColorHex, rotY = 0, stencilCode = 'BRCH') {
+    const { group, colliderBox } = this.containerFactory.createContainer(
+      x, y, z, width, height, length, baseColorHex, rotY, stencilCode
+    );
+    this.group.add(group);
+    this.colliders.push({ box: colliderBox, type: 'container', mesh: group });
+    return group;
   }
 
   buildShippingContainers() {
-    // Standard sizes:
-    // 20ft: width 2.5, height 2.6, length 6.0
-    // 40ft: width 2.5, height 2.6, length 12.0
+    // ---------------------------------------------------------
+    // 1. CENTRAL COMBAT ARENA (Balanced cover, broken sightlines)
+    // ---------------------------------------------------------
+    // Center forward containers (40ft)
+    this.placeContainer(-6, 0, -4, 2.5, 2.6, 12, '#c2410c', 0, 'CTR-01');
+    this.placeContainer(6, 0, 4, 2.5, 2.6, 12, '#1e40af', 0, 'CTR-02');
+
+    // Stacked center high-ground container (20ft)
+    this.placeContainer(0, 2.6, 0, 2.5, 2.6, 6, '#7c2d12', Math.PI / 2, 'HIGH-01');
+
+    // Center lateral barriers (North / South chokepoints)
+    this.placeContainer(0, 0, -18, 2.5, 2.6, 10, '#b91c1c', Math.PI / 2, 'LAT-N');
+    this.placeContainer(0, 0, 18, 2.5, 2.6, 10, '#15803d', Math.PI / 2, 'LAT-S');
 
     // ---------------------------------------------------------
-    // 1. CENTRAL COMBAT ARENA (Balanced layout with chokepoints)
+    // 2. WEST / RED APPROACH LANES
     // ---------------------------------------------------------
-    // Center cluster: broken sightlines between West and East
-    this.createContainer(-6, 0, -4, 2.5, 2.6, 12, this.materials.containerOrange);
-    this.createContainer(6, 0, 4, 2.5, 2.6, 12, this.materials.containerBlue);
-    
-    // Stacked high-ground container in the center
-    this.createContainer(0, 2.6, 0, 2.5, 2.6, 6, this.materials.containerRust, Math.PI / 2);
+    this.placeContainer(-26, 0, -12, 2.5, 2.6, 12, '#b91c1c', 0, 'RED-FWD');
+    this.placeContainer(-26, 2.6, -12, 2.5, 2.6, 6, '#475569', 0, 'RED-TIER2'); // Tier 2 stack
 
-    // Center lateral barriers
-    this.createContainer(0, 0, -18, 2.5, 2.6, 10, this.materials.containerRed, Math.PI / 2);
-    this.createContainer(0, 0, 18, 2.5, 2.6, 10, this.materials.containerGreen, Math.PI / 2);
+    this.placeContainer(-26, 0, 14, 2.5, 2.6, 12, '#9a3412', 0, 'RED-FLANK');
+    this.placeContainer(-34, 0, 2, 2.5, 2.6, 6, '#c2410c', Math.PI / 4, 'RED-ANG');
+    this.placeContainer(-34, 0, -20, 2.5, 2.6, 6, '#1d4ed8', 0, 'RED-OUT');
 
     // ---------------------------------------------------------
-    // 2. WEST / RED APPROACH
+    // 3. EAST / BLUE APPROACH LANES
     // ---------------------------------------------------------
-    // West Forward Container Stack (1st and 2nd tier)
-    this.createContainer(-26, 0, -12, 2.5, 2.6, 12, this.materials.containerRed);
-    this.createContainer(-26, 2.6, -12, 2.5, 2.6, 6, this.materials.containerGray); // Tier 2
+    this.placeContainer(26, 0, 12, 2.5, 2.6, 12, '#1d4ed8', 0, 'BLU-FWD');
+    this.placeContainer(26, 2.6, 12, 2.5, 2.6, 6, '#c2410c', 0, 'BLU-TIER2'); // Tier 2 stack
 
-    this.createContainer(-26, 0, 14, 2.5, 2.6, 12, this.materials.containerRust);
-    this.createContainer(-34, 0, 2, 2.5, 2.6, 6, this.materials.containerOrange, Math.PI / 4);
-    this.createContainer(-34, 0, -20, 2.5, 2.6, 6, this.materials.containerBlue);
-
-    // ---------------------------------------------------------
-    // 3. EAST / BLUE APPROACH
-    // ---------------------------------------------------------
-    // East Forward Container Stack (1st and 2nd tier)
-    this.createContainer(26, 0, 12, 2.5, 2.6, 12, this.materials.containerBlue);
-    this.createContainer(26, 2.6, 12, 2.5, 2.6, 6, this.materials.containerOrange); // Tier 2
-
-    this.createContainer(26, 0, -14, 2.5, 2.6, 12, this.materials.containerRed);
-    this.createContainer(34, 0, -2, 2.5, 2.6, 6, this.materials.containerGreen, -Math.PI / 4);
-    this.createContainer(34, 0, 20, 2.5, 2.6, 6, this.materials.containerGray);
+    this.placeContainer(26, 0, -14, 2.5, 2.6, 12, '#b91c1c', 0, 'BLU-FLANK');
+    this.placeContainer(34, 0, -2, 2.5, 2.6, 6, '#15803d', -Math.PI / 4, 'BLU-ANG');
+    this.placeContainer(34, 0, 20, 2.5, 2.6, 6, '#475569', 0, 'BLU-OUT');
 
     // ---------------------------------------------------------
-    // 4. NORTH FLANKING LANE (Depot / Tight Corridor)
+    // 4. NORTH FLANKING CORRIDOR (Depot / Warehouse Side)
     // ---------------------------------------------------------
-    this.createContainer(-16, 0, -30, 2.5, 2.6, 12, this.materials.containerBlue, Math.PI / 2);
-    this.createContainer(16, 0, -30, 2.5, 2.6, 12, this.materials.containerRust, Math.PI / 2);
-    this.createContainer(-38, 0, -32, 2.5, 2.6, 6, this.materials.containerOrange);
-    this.createContainer(38, 0, -32, 2.5, 2.6, 6, this.materials.containerRed);
+    this.placeContainer(-16, 0, -30, 2.5, 2.6, 12, '#1e40af', Math.PI / 2, 'DEPOT-W');
+    this.placeContainer(16, 0, -30, 2.5, 2.6, 12, '#9a3412', Math.PI / 2, 'DEPOT-E');
+    this.placeContainer(-38, 0, -32, 2.5, 2.6, 6, '#c2410c', 0, 'DEPOT-W2');
+    this.placeContainer(38, 0, -32, 2.5, 2.6, 6, '#b91c1c', 0, 'DEPOT-E2');
 
     // ---------------------------------------------------------
-    // 5. SOUTH FLANKING LANE (Train Line / Long Sightlines)
+    // 5. SOUTH FLANKING CORRIDOR (Crane Rail Line / Long Sightlines)
     // ---------------------------------------------------------
-    this.createContainer(-16, 0, 30, 2.5, 2.6, 12, this.materials.containerGreen, Math.PI / 2);
-    this.createContainer(16, 0, 30, 2.5, 2.6, 12, this.materials.containerOrange, Math.PI / 2);
-    this.createContainer(-38, 0, 32, 2.5, 2.6, 6, this.materials.containerGray);
-    this.createContainer(38, 0, 32, 2.5, 2.6, 6, this.materials.containerBlue);
+    this.placeContainer(-16, 0, 30, 2.5, 2.6, 12, '#15803d', Math.PI / 2, 'RAIL-W');
+    this.placeContainer(16, 0, 30, 2.5, 2.6, 12, '#c2410c', Math.PI / 2, 'RAIL-E');
+    this.placeContainer(-38, 0, 32, 2.5, 2.6, 6, '#475569', 0, 'RAIL-W2');
+    this.placeContainer(38, 0, 32, 2.5, 2.6, 6, '#1d4ed8', 0, 'RAIL-E2');
   }
 
-  buildTacticalCover() {
-    // ---------------------------------------------------------
-    // 1. Concrete Jersey Barriers (Height ~1.1m, Width ~0.5m, Length ~3m)
-    // ---------------------------------------------------------
-    const createBarrier = (x, z, rotY = 0) => {
-      const geo = new THREE.BoxGeometry(0.5, 1.1, 3.0);
-      const mesh = new THREE.Mesh(geo, this.materials.barrier);
-      mesh.position.set(x, 0.55, z);
-      mesh.rotation.y = rotY;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
-
-      const box = new THREE.Box3().setFromObject(mesh);
-      this.colliders.push({ box, type: 'barrier', mesh });
+  buildTacticalProps() {
+    // 1. Concrete Jersey Barriers (Tactical cover in open cross-lanes)
+    const addBarrier = (x, z, rotY = 0) => {
+      const { group, colliderBox } = this.props.createJerseyBarrier(x, 0, z, rotY);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'barrier', mesh: group });
     };
 
-    // Barriers in combat lanes and chokepoints
-    createBarrier(-12, 0, 0);
-    createBarrier(12, 0, 0);
-    createBarrier(-8, -12, Math.PI / 3);
-    createBarrier(8, 12, Math.PI / 3);
-    createBarrier(0, -10, Math.PI / 2);
-    createBarrier(0, 10, Math.PI / 2);
-    createBarrier(-22, -26, 0);
-    createBarrier(22, 26, 0);
-    createBarrier(-40, 14, Math.PI / 6);
-    createBarrier(40, -14, -Math.PI / 6);
+    addBarrier(-12, 0, 0);
+    addBarrier(12, 0, 0);
+    addBarrier(-8, -12, Math.PI / 3);
+    addBarrier(8, 12, Math.PI / 3);
+    addBarrier(0, -10, Math.PI / 2);
+    addBarrier(0, 10, Math.PI / 2);
+    addBarrier(-22, -26, 0);
+    addBarrier(22, 26, 0);
+    addBarrier(-40, 14, Math.PI / 6);
+    addBarrier(40, -14, -Math.PI / 6);
 
-    // ---------------------------------------------------------
-    // 2. Wooden & Metal Supply Crates (Climbable stepping stones)
-    // ---------------------------------------------------------
-    const createCrate = (x, y, z, size, material) => {
-      const geo = new THREE.BoxGeometry(size, size, size);
-      const mesh = new THREE.Mesh(geo, material);
-      mesh.position.set(x, y + size / 2, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
-
-      const box = new THREE.Box3().setFromObject(mesh);
-      this.colliders.push({ box, type: 'crate', mesh });
+    // 2. Supply Crates (Stepping stones to high-ground containers & waist-high cover)
+    const addCrate = (x, y, z, size, isMetal, rotY = 0) => {
+      const { group, colliderBox } = this.props.createCrate(x, y, z, size, isMetal, rotY);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'crate', mesh: group });
     };
 
-    // Parkour Stairs up to Center Tier 2 Container
-    createCrate(-2.5, 0, -8, 1.0, this.materials.crateWood);
-    createCrate(-2.5, 0.9, -8, 0.9, this.materials.crateMetal);
-    createCrate(-1.5, 0, -5, 1.4, this.materials.crateWood);
-    createCrate(1.5, 0, 5, 1.4, this.materials.crateWood);
+    // Stairs to Center High-Ground Container
+    addCrate(-2.5, 0, -8, 1.0, false);
+    addCrate(-2.5, 0.95, -8, 0.9, true);
+    addCrate(-1.5, 0, -5, 1.4, false);
+    addCrate(1.5, 0, 5, 1.4, false);
 
-    // Stairs up to West Container Stack (-26, 0, -12)
-    createCrate(-23, 0, -16, 1.0, this.materials.crateWood);
-    createCrate(-23, 0.9, -15, 0.9, this.materials.crateMetal);
-    createCrate(-24, 1.8, -14, 0.9, this.materials.crateWood);
+    // Stairs to West Container Stack (-26, 0, -12)
+    addCrate(-23, 0, -16, 1.0, false);
+    addCrate(-23, 0.95, -15, 0.9, true);
+    addCrate(-24, 1.85, -14, 0.9, false);
 
-    // Stairs up to East Container Stack (26, 0, 12)
-    createCrate(23, 0, 16, 1.0, this.materials.crateWood);
-    createCrate(23, 0.9, 15, 0.9, this.materials.crateMetal);
-    createCrate(24, 1.8, 14, 0.9, this.materials.crateWood);
+    // Stairs to East Container Stack (26, 0, 12)
+    addCrate(23, 0, 16, 1.0, false);
+    addCrate(23, 0.95, 15, 0.9, true);
+    addCrate(24, 1.85, 14, 0.9, false);
 
-    // Additional tactical cover crates throughout map
-    createCrate(-18, 0, 10, 1.2, this.materials.crateWood);
-    createCrate(18, 0, -10, 1.2, this.materials.crateWood);
-    createCrate(-30, 0, -8, 1.1, this.materials.crateMetal);
-    createCrate(30, 0, 8, 1.1, this.materials.crateMetal);
-    createCrate(-6, 0, 22, 1.2, this.materials.crateWood);
-    createCrate(6, 0, -22, 1.2, this.materials.crateWood);
+    // Additional tactical cover crates throughout yard
+    addCrate(-18, 0, 10, 1.2, false);
+    addCrate(18, 0, -10, 1.2, false);
+    addCrate(-30, 0, -8, 1.1, true);
+    addCrate(30, 0, 8, 1.1, true);
+    addCrate(-6, 0, 22, 1.2, false);
+    addCrate(6, 0, -22, 1.2, false);
 
-    // ---------------------------------------------------------
-    // 3. Industrial Barrels (Radius 0.4m, Height 1.1m)
-    // ---------------------------------------------------------
-    const createBarrel = (x, z, material) => {
-      const geo = new THREE.CylinderGeometry(0.4, 0.4, 1.1, 10);
-      const mesh = new THREE.Mesh(geo, material);
-      mesh.position.set(x, 0.55, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
-
-      // Approximate cylinder with bounding box for collision
-      const box = new THREE.Box3(
-        new THREE.Vector3(x - 0.4, 0, z - 0.4),
-        new THREE.Vector3(x + 0.4, 1.1, z + 0.4)
-      );
-      this.colliders.push({ box, type: 'barrel', mesh });
+    // 3. Wooden Euro-Pallet Stacks (Industrial staging near containers)
+    const addPalletStack = (x, z, count = 3, rotY = 0) => {
+      const { group, colliderBox } = this.props.createPalletStack(x, 0, z, count, rotY);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'pallet', mesh: group });
     };
 
-    createBarrel(-14, 3, this.materials.barrelRed);
-    createBarrel(-14.7, 3.4, this.materials.barrelYellow);
-    createBarrel(14, -3, this.materials.barrelRed);
-    createBarrel(14.7, -3.4, this.materials.barrelYellow);
-    createBarrel(-28, 22, this.materials.barrelRed);
-    createBarrel(28, -22, this.materials.barrelYellow);
-    createBarrel(0, -24, this.materials.barrelRed);
-    createBarrel(0, 24, this.materials.barrelYellow);
+    addPalletStack(-18, -4, 4, 0.15);
+    addPalletStack(18, 4, 4, -0.12);
+    addPalletStack(-30, 20, 3, 0.4);
+    addPalletStack(30, -20, 3, -0.3);
+
+    // 4. Industrial Steel Drums / Chemical Barrels (Clusters for cover)
+    const addBarrel = (x, z, color = 'red') => {
+      const { group, colliderBox } = this.props.createSteelBarrel(x, 0, z, color);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'barrel', mesh: group });
+    };
+
+    addBarrel(-14, 3, 'red');
+    addBarrel(-14.7, 3.4, 'yellow');
+    addBarrel(14, -3, 'red');
+    addBarrel(14.7, -3.4, 'yellow');
+    addBarrel(-28, 22, 'red');
+    addBarrel(28, -22, 'yellow');
+    addBarrel(0, -24, 'red');
+    addBarrel(0, 24, 'yellow');
+
+    // 5. Heavy Vehicle Tire Stacks (Near corners)
+    const addTireStack = (x, z, count = 3) => {
+      const { group, colliderBox } = this.props.createTireStack(x, 0, z, count);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'tires', mesh: group });
+    };
+
+    addTireStack(-42, -26, 3);
+    addTireStack(42, 26, 3);
+    addTireStack(-10, 24, 2);
+    addTireStack(10, -24, 2);
+
+    // 6. Wooden Cable Reels
+    const addReel = (x, z, rotY = 0) => {
+      const { group, colliderBox } = this.props.createCableReel(x, 0, z, 0.75, 1.0);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'reel', mesh: group });
+    };
+
+    addReel(-32, -14);
+    addReel(32, 14);
+
+    // 7. High-Visibility Safety Bollards
+    const addBollard = (x, z) => {
+      const { group, colliderBox } = this.props.createSafetyBollard(x, 0, z);
+      this.group.add(group);
+      this.colliders.push({ box: colliderBox, type: 'bollard', mesh: group });
+    };
+
+    // Bollards flanking warehouse bay platform
+    addBollard(-26, -36.5);
+    addBollard(26, -36.5);
+    addBollard(-12, -36.5);
+    addBollard(12, -36.5);
+
+    // 8. Parked Industrial Forklift in Depot Bay (Landmark & Solid Cover)
+    const { group: forklift, colliderBox: forkBox } = this.props.createForklift(20, 0, -24, -Math.PI / 4);
+    this.group.add(forklift);
+    this.colliders.push({ box: forkBox, type: 'forklift', mesh: forklift });
   }
 
   buildLightingStructures() {
-    // 4 Corner floodlight towers
+    // 4 High-mast industrial floodlight towers in yard corners
     const towerCoords = [
       [-48, -34],
       [48, -34],
@@ -461,30 +428,85 @@ export class ContainerYardMap {
       [48, 34]
     ];
 
+    const poleMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2530,
+      roughness: 0.6,
+      metalness: 0.4
+    });
+
+    const lampMat = new THREE.MeshStandardMaterial({
+      color: 0xffedd5,
+      emissive: 0xffaa44,
+      emissiveIntensity: 0.8,
+      roughness: 0.2
+    });
+
     towerCoords.forEach(([tx, tz]) => {
-      const poleGeo = new THREE.CylinderGeometry(0.2, 0.25, 7, 8);
-      const pole = new THREE.Mesh(poleGeo, this.materials.wall);
-      pole.position.set(tx, 3.5, tz);
+      const towerGroup = new THREE.Group();
+      towerGroup.position.set(tx, 0, tz);
+
+      // Steel mast pole (Height 8.5m)
+      const poleGeo = new THREE.CylinderGeometry(0.2, 0.3, 8.5, 8);
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.y = 4.25;
       pole.castShadow = true;
-      this.group.add(pole);
+      towerGroup.add(pole);
 
-      const lampHeadGeo = new THREE.BoxGeometry(0.8, 0.4, 0.8);
-      const lampHead = new THREE.Mesh(lampHeadGeo, this.materials.wallTrim);
-      lampHead.position.set(tx, 7.2, tz);
-      this.group.add(lampHead);
+      // Floodlight housing bracket
+      const headGeo = new THREE.BoxGeometry(1.2, 0.4, 0.8);
+      const head = new THREE.Mesh(headGeo, poleMat);
+      head.position.y = 8.6;
+      towerGroup.add(head);
 
-      // Light source
-      const light = new THREE.PointLight(0xffeedd, 1.2, 35);
-      light.position.set(tx, 6.8, tz);
-      this.group.add(light);
+      // Glowing floodlight fixture
+      const bulbGeo = new THREE.BoxGeometry(1.0, 0.2, 0.6);
+      const bulb = new THREE.Mesh(bulbGeo, lampMat);
+      bulb.position.y = 8.45;
+      towerGroup.add(bulb);
 
-      // Register pole collision
+      // Warm ambient point light (restrained intensity for performance)
+      const pointLight = new THREE.PointLight(0xffedd5, 0.85, 32);
+      pointLight.position.set(0, 8.0, 0);
+      towerGroup.add(pointLight);
+
+      this.group.add(towerGroup);
+
+      // Pole collision cylinder
       const box = new THREE.Box3(
-        new THREE.Vector3(tx - 0.3, 0, tz - 0.3),
-        new THREE.Vector3(tx + 0.3, 7.2, tz + 0.3)
+        new THREE.Vector3(tx - 0.35, 0, tz - 0.35),
+        new THREE.Vector3(tx + 0.35, 8.5, tz + 0.35)
       );
       this.colliders.push({ box, type: 'lightpole', mesh: pole });
     });
+  }
+
+  /**
+   * Giant Harbor Gantry Cranes in Exterior Skybox
+   * Placed outside perimeter walls to establish grand container terminal atmosphere
+   */
+  buildExteriorLandmarks() {
+    // Giant maritime gantry crane towering to the North (Z = -68)
+    const craneNorth = this.props.createExteriorGantryCrane(0, 0, -68, 0);
+    this.group.add(craneNorth);
+
+    // Giant maritime gantry crane towering to the South (Z = 68)
+    const craneSouth = this.props.createExteriorGantryCrane(-25, 0, 68, Math.PI);
+    this.group.add(craneSouth);
+
+    // Container stack silhouettes in exterior perimeter
+    const extMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.9,
+      metalness: 0.1
+    });
+
+    const extBlock1 = new THREE.Mesh(new THREE.BoxGeometry(30, 10, 8), extMat);
+    extBlock1.position.set(-65, 5, 0);
+    this.group.add(extBlock1);
+
+    const extBlock2 = new THREE.Mesh(new THREE.BoxGeometry(30, 10, 8), extMat);
+    extBlock2.position.set(65, 5, 0);
+    this.group.add(extBlock2);
   }
 
   /**

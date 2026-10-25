@@ -14,8 +14,24 @@ import { HUD } from './ui/HUD.js';
 const container = document.getElementById('canvas-container');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x121620);
-scene.fog = new THREE.FogExp2(0x121620, 0.015);
+
+// Procedural Atmospheric Sky Gradient
+const skyCanvas = document.createElement('canvas');
+skyCanvas.width = 256;
+skyCanvas.height = 512;
+const skyCtx = skyCanvas.getContext('2d');
+const skyGrad = skyCtx.createLinearGradient(0, 0, 0, 512);
+skyGrad.addColorStop(0.0, '#090d16');  // Deep maritime night zenith
+skyGrad.addColorStop(0.45, '#131b2e'); // Midnight steel blue
+skyGrad.addColorStop(0.85, '#243048'); // Atmospheric horizon glow
+skyGrad.addColorStop(1.0, '#384860');  // Industrial dock horizon haze
+skyCtx.fillStyle = skyGrad;
+skyCtx.fillRect(0, 0, 256, 512);
+const skyTexture = new THREE.CanvasTexture(skyCanvas);
+scene.background = skyTexture;
+
+// Subtle competitive distance fog (preserves target silhouette clarity up to 70m)
+scene.fog = new THREE.FogExp2(0x182030, 0.011);
 
 const camera = new THREE.PerspectiveCamera(
   80, // FOV 80 for competitive tactical FPS feel
@@ -30,32 +46,39 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.1;
 container.appendChild(renderer.domElement);
 
 // -------------------------------------------------------------
 // 2. Map & Environmental Lighting
 // -------------------------------------------------------------
-const hemiLight = new THREE.HemisphereLight(0x90b0d0, 0x222630, 0.85);
+// Coherent hemisphere light: cool maritime sky bounce vs dark concrete ground bounce
+const hemiLight = new THREE.HemisphereLight(0xa0b4d4, 0x18202c, 0.95);
 scene.add(hemiLight);
 
-const sunLight = new THREE.DirectionalLight(0xfff0dd, 1.4);
-sunLight.position.set(40, 60, 30);
+// Key directional sunlight (warm tactical golden-hour sun)
+const sunLight = new THREE.DirectionalLight(0xfff3e5, 1.45);
+sunLight.position.set(45, 65, 32);
 sunLight.castShadow = true;
 sunLight.shadow.mapSize.width = 2048;
 sunLight.shadow.mapSize.height = 2048;
 sunLight.shadow.camera.near = 10;
-sunLight.shadow.camera.far = 150;
-sunLight.shadow.camera.left = -60;
-sunLight.shadow.camera.right = 60;
-sunLight.shadow.camera.top = 50;
-sunLight.shadow.camera.bottom = -50;
-sunLight.shadow.bias = -0.0005;
+sunLight.shadow.camera.far = 160;
+sunLight.shadow.camera.left = -65;
+sunLight.shadow.camera.right = 65;
+sunLight.shadow.camera.top = 55;
+sunLight.shadow.camera.bottom = -55;
+sunLight.shadow.bias = -0.0004;
 scene.add(sunLight);
 
-const fillLight = new THREE.DirectionalLight(0x406080, 0.4);
-fillLight.position.set(-40, 30, -30);
+// Cool ambient fill light to soften harsh shadows
+const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.35);
+fillLight.position.set(-45, 35, -35);
 scene.add(fillLight);
+
+// Subtle ambient baseline to prevent pitch-black container interiors
+const ambientBase = new THREE.AmbientLight(0x161c28, 0.25);
+scene.add(ambientBase);
 
 // -------------------------------------------------------------
 // 3. Collision System & Container Yard Map
