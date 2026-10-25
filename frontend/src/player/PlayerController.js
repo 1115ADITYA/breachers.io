@@ -3,7 +3,8 @@ import * as THREE from 'three';
 /**
  * PlayerController
  * First-person shooter controls with Pointer Lock, WASD movement,
- * tactical sprint, jumping, gravity, and collision sliding.
+ * tactical sprint, jumping, gravity, weapon selection (1, 2, 3),
+ * automatic firing, and death state disabling.
  */
 export class PlayerController {
   constructor(camera, domElement, collisionSystem, hud) {
@@ -30,8 +31,8 @@ export class PlayerController {
     this.isGrounded = false;
     this.isSprinting = false;
     this.isMoving = false;
-    this.health = 100;
-    this.maxHealth = 100;
+    this.isDead = false;
+    this.isMouseDown = false;
 
     // Camera Rotation
     this.pitch = 0; // Look up/down (-Math.PI/2 to +Math.PI/2)
@@ -61,11 +62,21 @@ export class PlayerController {
     this.weapon = weapon;
   }
 
+  setDead(isDead) {
+    this.isDead = isDead;
+    if (isDead) {
+      this.isMouseDown = false;
+      this.velocity.set(0, 0, 0);
+      Object.keys(this.keys).forEach(k => this.keys[k] = false);
+    }
+  }
+
   spawnAt(x, y, z, rotationY = 0) {
     this.position.set(x, y, z);
     this.yaw = rotationY;
     this.pitch = 0;
     this.velocity.set(0, 0, 0);
+    this.setDead(false);
     this.updateCamera();
   }
 
@@ -80,7 +91,7 @@ export class PlayerController {
 
     // Mouse movement
     document.addEventListener('mousemove', (e) => {
-      if (!this.isLocked) return;
+      if (!this.isLocked || this.isDead) return;
 
       this.yaw -= e.movementX * this.mouseSensitivity;
       this.pitch -= e.movementY * this.mouseSensitivity;
@@ -97,13 +108,24 @@ export class PlayerController {
         return;
       }
 
-      if (e.button === 0 && this.weapon) {
-        this.weapon.shoot();
+      if (e.button === 0 && !this.isDead) {
+        this.isMouseDown = true;
+        if (this.weapon) {
+          this.weapon.shoot();
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) {
+        this.isMouseDown = false;
       }
     });
 
     // Keyboard controls
     window.addEventListener('keydown', (e) => {
+      if (this.isDead) return;
+
       switch (e.code) {
         case 'KeyW':
         case 'ArrowUp':
@@ -131,6 +153,15 @@ export class PlayerController {
           break;
         case 'KeyR':
           if (this.weapon) this.weapon.reload();
+          break;
+        case 'Digit1':
+          if (this.weapon) this.weapon.switchWeapon('ASSAULT');
+          break;
+        case 'Digit2':
+          if (this.weapon) this.weapon.switchWeapon('PISTOL');
+          break;
+        case 'Digit3':
+          if (this.weapon) this.weapon.switchWeapon('KNIFE');
           break;
       }
     });
@@ -170,8 +201,20 @@ export class PlayerController {
 
   update(delta) {
     if (!this.isLocked) {
-      // Still update camera position when paused so it stays centered
       this.updateCamera();
+      return;
+    }
+
+    // Handle continuous automatic fire when mouse is held
+    if (this.isMouseDown && !this.isDead && this.weapon && this.weapon.currentStats.auto) {
+      this.weapon.shoot();
+    }
+
+    if (this.isDead) {
+      // While dead, don't update movement physics
+      if (this.weapon) {
+        this.weapon.update(delta, false, false);
+      }
       return;
     }
 
@@ -199,7 +242,6 @@ export class PlayerController {
       this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, targetVelX, delta * accel);
       this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, targetVelZ, delta * accel);
     } else {
-      // Friction / deceleration
       const friction = this.isGrounded ? 22.0 : 3.0;
       this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, 0, delta * friction);
       this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, 0, delta * friction);
@@ -211,11 +253,10 @@ export class PlayerController {
         this.velocity.y = this.jumpForce;
         this.isGrounded = false;
       } else {
-        this.velocity.y = -1.0; // Small downward clamp to maintain ground contact
+        this.velocity.y = -1.0;
       }
     } else {
       this.velocity.y -= this.gravity * delta;
-      // Cap maximum terminal falling velocity
       this.velocity.y = Math.max(-45, this.velocity.y);
     }
 
@@ -231,7 +272,7 @@ export class PlayerController {
       desiredMove,
       this.radius,
       this.height,
-      0.45 // Step-up max height
+      0.45
     );
 
     this.position.copy(collisionResult.position);
@@ -254,14 +295,12 @@ export class PlayerController {
   }
 
   updateCamera() {
-    // Eye position is at player position + eyeHeight
     this.camera.position.set(
       this.position.x,
       this.position.y + this.eyeHeight,
       this.position.z
     );
 
-    // Apply Yaw and Pitch rotation directly to camera
     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
     euler.x = this.pitch;
     euler.y = this.yaw;

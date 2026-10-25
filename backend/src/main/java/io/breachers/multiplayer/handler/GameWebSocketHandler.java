@@ -61,6 +61,15 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     sessionManager.send(playerSession, new ServerMessage.Pong());
                 }
             }
+            case ClientMessage.Shoot shoot -> {
+                sessionManager.handleShoot(session.getId(), shoot);
+            }
+            case ClientMessage.Reload reload -> {
+                sessionManager.handleReload(session.getId());
+            }
+            case ClientMessage.SwitchWeapon switchWeapon -> {
+                sessionManager.handleSwitchWeapon(session.getId(), switchWeapon.weapon());
+            }
         }
     }
 

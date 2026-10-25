@@ -142,8 +142,71 @@ const startSpawn = map.getRandomSpawn('red');
 player.spawnAt(startSpawn.x, startSpawn.y, startSpawn.z, startSpawn.rotationY);
 
 // Weapon setup
-const weapon = new Weapon(camera, scene, collisionSystem, hud);
+const weapon = new Weapon(camera, scene, collisionSystem, hud, gameNetwork);
 player.setWeapon(weapon);
+
+// -------------------------------------------------------------
+// 5b. Combat Networking Event Routing
+// -------------------------------------------------------------
+gameNetwork.onShotFired = (data) => {
+  // If shot was fired by another connected peer, render remote muzzle flash & tracer
+  if (data.shooterId !== gameNetwork.playerId) {
+    remotePlayerManager.triggerRemoteShot(data.shooterId, data.origin, data.direction, data.weapon);
+  }
+};
+
+gameNetwork.onWeaponState = (data) => {
+  weapon.syncServerWeaponState(data);
+};
+
+gameNetwork.onHealthUpdated = (data) => {
+  if (data.playerId === gameNetwork.playerId) {
+    hud.updateHealth(data.health);
+  }
+};
+
+gameNetwork.onPlayerHit = (data) => {
+  // If shooter is local player, show crosshair hitmarker & floating damage feedback
+  if (data.shooterId === gameNetwork.playerId) {
+    hud.showHitmarker(data.isHeadshot);
+    hud.showDamageNumber(data.damage, data.isHeadshot, window.innerWidth / 2, window.innerHeight / 2);
+    weapon.playHitmarkerSound(data.isHeadshot);
+  }
+
+  // If victim is local player, trigger damage screen flash vignette
+  if (data.victimId === gameNetwork.playerId) {
+    hud.flashDamageVignette();
+  }
+};
+
+gameNetwork.onPlayerDied = (data) => {
+  console.log(`[Combat] Elimination: ${data.killerName} killed ${data.victimName} with ${data.weapon}`);
+
+  if (data.victimId === gameNetwork.playerId) {
+    player.setDead(true);
+    hud.updateHealth(0);
+    hud.showDeathScreen(data.killerName, data.weapon, 3);
+  } else {
+    remotePlayerManager.setPlayerDead(data.victimId, true);
+  }
+};
+
+gameNetwork.onPlayerRespawned = (data) => {
+  console.log(`[Combat] Respawn: Player ${data.playerId} at (${data.x}, ${data.y}, ${data.z})`);
+
+  if (data.playerId === gameNetwork.playerId) {
+    player.spawnAt(data.x, data.y, data.z, data.yaw);
+    hud.hideDeathScreen();
+    hud.updateHealth(data.health);
+    weapon.selectWeapon(0); // Restore primary assault rifle
+  } else {
+    remotePlayerManager.respawnPlayer(data.playerId, data.x, data.y, data.z, data.yaw);
+  }
+};
+
+gameNetwork.onKillFeed = (data) => {
+  hud.addKillFeedEntry(data.killerName, data.victimName, data.weapon);
+};
 
 // -------------------------------------------------------------
 // 6. Practice Target Dummies (Shooting Feedback)

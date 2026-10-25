@@ -2,11 +2,10 @@
  * GameNetwork
  * Manages WebSocket connection to the Spring Boot backend (/ws/game),
  * structured protocol serialization, rate-limited movement transmission,
- * and session state.
+ * combat messaging (SHOOT, RELOAD, SWITCH_WEAPON), and session state.
  */
 export class GameNetwork {
   constructor(options = {}) {
-    // Configurable endpoint with auto-detection of host
     const defaultHost = window.location.hostname || 'localhost';
     const defaultPort = '8081';
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -21,7 +20,9 @@ export class GameNetwork {
     // Transmission Rate Limiting: 20 updates per second (50ms interval)
     this.updateIntervalMs = 50;
     this.lastSendTime = 0;
-    this.pendingMove = null;
+
+    // Shot sequence generator
+    this.shotSequence = 0;
 
     // Callbacks
     this.onWelcome = null;
@@ -32,7 +33,15 @@ export class GameNetwork {
     this.onError = null;
     this.onPlayerCountChange = null;
 
-    // Track total players online in session
+    // Combat Callbacks
+    this.onShotFired = null;
+    this.onWeaponState = null;
+    this.onHealthUpdated = null;
+    this.onPlayerHit = null;
+    this.onPlayerDied = null;
+    this.onPlayerRespawned = null;
+    this.onKillFeed = null;
+
     this.onlinePlayerCount = 1;
   }
 
@@ -139,6 +148,45 @@ export class GameNetwork {
     }
   }
 
+  /**
+   * Send a SHOOT combat message to the server
+   */
+  sendShoot(weapon, origin, dir) {
+    if (!this.isConnected || !this.localPlayerId) return;
+
+    this.shotSequence++;
+    this.send({
+      type: 'SHOOT',
+      shotId: this.shotSequence,
+      weapon,
+      originX: Math.round(origin.x * 1000) / 1000,
+      originY: Math.round(origin.y * 1000) / 1000,
+      originZ: Math.round(origin.z * 1000) / 1000,
+      dirX: Math.round(dir.x * 10000) / 10000,
+      dirY: Math.round(dir.y * 10000) / 10000,
+      dirZ: Math.round(dir.z * 10000) / 10000
+    });
+  }
+
+  /**
+   * Send a RELOAD command to the server
+   */
+  sendReload() {
+    if (!this.isConnected || !this.localPlayerId) return;
+    this.send({ type: 'RELOAD' });
+  }
+
+  /**
+   * Send a SWITCH_WEAPON command to the server
+   */
+  sendSwitchWeapon(weapon) {
+    if (!this.isConnected || !this.localPlayerId) return;
+    this.send({
+      type: 'SWITCH_WEAPON',
+      weapon
+    });
+  }
+
   handleMessage(rawString) {
     let msg;
     try {
@@ -164,7 +212,6 @@ export class GameNetwork {
         break;
 
       case 'PLAYER_MOVED':
-        // Only process remote player movement (prevent self-echoes)
         if (msg.id !== this.localPlayerId) {
           if (this.onPlayerMoved) this.onPlayerMoved(msg);
         }
@@ -176,13 +223,40 @@ export class GameNetwork {
         if (this.onPlayerLeft) this.onPlayerLeft(msg);
         break;
 
+      case 'SHOT_FIRED':
+        if (this.onShotFired) this.onShotFired(msg);
+        break;
+
+      case 'WEAPON_STATE':
+        if (this.onWeaponState) this.onWeaponState(msg);
+        break;
+
+      case 'HEALTH_UPDATED':
+        if (this.onHealthUpdated) this.onHealthUpdated(msg);
+        break;
+
+      case 'PLAYER_HIT':
+        if (this.onPlayerHit) this.onPlayerHit(msg);
+        break;
+
+      case 'PLAYER_DIED':
+        if (this.onPlayerDied) this.onPlayerDied(msg);
+        break;
+
+      case 'PLAYER_RESPAWNED':
+        if (this.onPlayerRespawned) this.onPlayerRespawned(msg);
+        break;
+
+      case 'KILL_FEED':
+        if (this.onKillFeed) this.onKillFeed(msg);
+        break;
+
       case 'ERROR':
         console.warn('GameNetwork: Server error:', msg.message);
         if (this.onError) this.onError(msg.message);
         break;
 
       case 'PONG':
-        // Heartbeat response
         break;
 
       default:

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.breachers.multiplayer.dto.ClientMessage;
 import io.breachers.multiplayer.dto.PlayerState;
 import io.breachers.multiplayer.model.PlayerSession;
+import io.breachers.multiplayer.model.WeaponType;
 import io.breachers.multiplayer.service.GameSessionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,11 +37,9 @@ class GameSessionManagerTest {
         String valid = sessionManager.sanitizeUsername("Viper_99");
         assertEquals("Viper_99", valid);
 
-        // Invalid characters should fallback to Operator_XXX
         String invalid = sessionManager.sanitizeUsername("<script>alert(1)</script>");
         assertTrue(invalid.startsWith("Operator_"));
 
-        // Too short should fallback
         String shortName = sessionManager.sanitizeUsername("A");
         assertTrue(shortName.startsWith("Operator_"));
     }
@@ -65,17 +64,14 @@ class GameSessionManagerTest {
         PlayerSession player = sessionManager.registerPlayer(stubSession, "Striker");
         PlayerState initial = player.getState();
 
-        // 1. Send NaN
         ClientMessage.Move nanMove = new ClientMessage.Move(Double.NaN, 0, 0, 0, 0, false, false);
         sessionManager.handleMovement("socket-2", nanMove);
         assertEquals(initial.x(), player.getState().x(), "State should not update with NaN");
 
-        // 2. Send out of bounds coordinate (e.g. x = 999m beyond yard walls)
         ClientMessage.Move oobMove = new ClientMessage.Move(999.0, 0, 0, 0, 0, false, false);
         sessionManager.handleMovement("socket-2", oobMove);
         assertEquals(initial.x(), player.getState().x(), "State should not update with out-of-bounds coordinate");
 
-        // 3. Send valid move
         ClientMessage.Move validMove = new ClientMessage.Move(10.0, 0.0, -15.0, 1.2, 0.1, true, false);
         sessionManager.handleMovement("socket-2", validMove);
         assertEquals(10.0, player.getState().x());
@@ -88,12 +84,10 @@ class GameSessionManagerTest {
 
         PlayerSession player = sessionManager.registerPlayer(stubSession, "Speedy");
 
-        // Send 35 messages within limit
         for (int i = 0; i < 35; i++) {
             assertTrue(player.checkRateLimit(35), "First 35 should pass");
         }
 
-        // 36th message in same window should be blocked
         assertFalse(player.checkRateLimit(35), "Message 36 within window should exceed limit");
     }
 
@@ -107,6 +101,135 @@ class GameSessionManagerTest {
         sessionManager.removePlayer("socket-4");
         assertEquals(0, sessionManager.getConnectedPlayerCount());
         assertNull(sessionManager.getSessionBySocketId("socket-4"));
+    }
+
+    @Test
+    void shouldHandleWeaponSelectionAndSwitching() {
+        TestWebSocketSession stub = new TestWebSocketSession("socket-w1");
+        PlayerSession player = sessionManager.registerPlayer(stub, "Gunner");
+
+        assertEquals(WeaponType.ASSAULT, player.getEquippedWeapon());
+
+        // Switch to Pistol
+        sessionManager.handleSwitchWeapon("socket-w1", "PISTOL");
+        assertEquals(WeaponType.PISTOL, player.getEquippedWeapon());
+
+        // Switch to Knife
+        sessionManager.handleSwitchWeapon("socket-w1", "KNIFE");
+        assertEquals(WeaponType.KNIFE, player.getEquippedWeapon());
+
+        // Invalid weapon string should safely default without crashing
+        sessionManager.handleSwitchWeapon("socket-w1", "ROCKET_LAUNCHER");
+        assertEquals(WeaponType.ASSAULT, player.getEquippedWeapon());
+    }
+
+    @Test
+    void shouldEnforceMagazineAmmoDepletionAndReload() {
+        TestWebSocketSession stub = new TestWebSocketSession("socket-ammo");
+        PlayerSession player = sessionManager.registerPlayer(stub, "Marksman");
+
+        assertEquals(30, player.getClip(WeaponType.ASSAULT));
+        assertEquals(90, player.getReserve(WeaponType.ASSAULT));
+
+        // Fire 5 shots
+        for (long i = 1; i <= 5; i++) {
+            player.setLastFireTimeMs(0); // clear fire cooldown for test
+            assertTrue(player.canFire(i, WeaponType.ASSAULT));
+            player.recordFire(i);
+        }
+        assertEquals(25, player.getClip(WeaponType.ASSAULT));
+
+        // Start reload
+        assertTrue(player.startReload());
+        assertTrue(player.isReloading());
+        assertFalse(player.canFire(6, WeaponType.ASSAULT), "Cannot fire while reloading");
+
+        // Knife requires no reload and no ammo
+        player.switchWeapon(WeaponType.KNIFE);
+        player.setLastFireTimeMs(0);
+        assertFalse(player.startReload(), "Knife cannot reload");
+        assertTrue(player.canFire(100, WeaponType.KNIFE), "Knife can always attack");
+    }
+
+    @Test
+    void shouldEnforceFireRateCooldownAndRejectDuplicateShotId() {
+        TestWebSocketSession stub = new TestWebSocketSession("socket-cd");
+        PlayerSession player = sessionManager.registerPlayer(stub, "Trigger");
+
+        assertTrue(player.canFire(101L, WeaponType.ASSAULT));
+        player.recordFire(101L);
+
+        // Immediate next shot should be rejected due to cooldown (< 110ms)
+        assertFalse(player.canFire(102L, WeaponType.ASSAULT), "Should reject fire during cooldown");
+
+        // Duplicate shot sequence ID should be rejected
+        assertFalse(player.canFire(101L, WeaponType.ASSAULT), "Should reject duplicate shot ID");
+    }
+
+    @Test
+    void shouldRegisterHitAndCalculateDamage() {
+        TestWebSocketSession stubA = new TestWebSocketSession("socket-hit-a");
+        TestWebSocketSession stubB = new TestWebSocketSession("socket-hit-b");
+
+        PlayerSession shooter = sessionManager.registerPlayer(stubA, "Shooter");
+        PlayerSession victim = sessionManager.registerPlayer(stubB, "Victim");
+
+        // Position shooter at (0, 0, 0)
+        shooter.updateState(new PlayerState(shooter.getPlayerId(), shooter.getUsername(), 0, 0, 0, 0, 0, false, false));
+
+        // Position victim at (0, 0, 10) - 10m away
+        victim.updateState(new PlayerState(victim.getPlayerId(), victim.getUsername(), 0, 0, 10, 0, 0, false, false));
+
+        // Disable spawn protection on victim for combat test
+        victim.respawn(0, 0, 10, 0);
+        victim.clearSpawnProtection();
+
+        // Direct damage test via raycast
+        GameSessionManager.HitResult hit = GameSessionManager.intersectRayPlayer(
+                0, 1.62, 0,
+                0, 0, 1, // Aiming directly towards victim along +Z
+                0, 0, 10,
+                100.0
+        );
+
+        assertNotNull(hit, "Ray should intersect victim hitbox");
+        assertTrue(hit.distance() > 8.0 && hit.distance() < 11.0);
+
+        // Apply damage
+        int initialHealth = victim.getHealth();
+        int remaining = victim.takeDamage(24);
+        assertEquals(initialHealth - 24, remaining);
+        assertEquals(remaining, victim.getHealth());
+    }
+
+    @Test
+    void shouldEnforceSpawnProtectionAndRejectDamage() {
+        TestWebSocketSession stub = new TestWebSocketSession("socket-prot");
+        PlayerSession player = sessionManager.registerPlayer(stub, "Shielded");
+
+        assertTrue(player.isSpawnProtected(), "Newly joined player should have spawn protection");
+        int health = player.takeDamage(50);
+        assertEquals(100, health, "Spawn protected player must not take damage");
+    }
+
+    @Test
+    void shouldHandleDeathAndRejectDeadPlayerFiring() {
+        TestWebSocketSession stub = new TestWebSocketSession("socket-dead");
+        PlayerSession player = sessionManager.registerPlayer(stub, "Doomed");
+
+        // Bypass spawn protection for test
+        player.clearSpawnProtection();
+        player.takeDamage(100);
+
+        assertTrue(player.isDead());
+        assertEquals(0, player.getHealth());
+        assertFalse(player.canFire(999L, WeaponType.ASSAULT), "Dead player must not be allowed to fire");
+
+        // Respawn restores health, ammo, and alive state
+        sessionManager.respawnPlayer(player.getPlayerId());
+        assertFalse(player.isDead());
+        assertEquals(100, player.getHealth());
+        assertTrue(player.isSpawnProtected());
     }
 
     /**

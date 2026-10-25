@@ -2,8 +2,8 @@ import { RemotePlayer } from './RemotePlayer.js';
 
 /**
  * RemotePlayerManager
- * Tracks active remote players in the game session, routes movement updates,
- * and handles safe instantiation and cleanup.
+ * Tracks active remote players in the game session, routes movement and combat updates,
+ * triggers shot effects, and handles death/respawn states.
  */
 export class RemotePlayerManager {
   constructor(scene) {
@@ -14,7 +14,6 @@ export class RemotePlayerManager {
   addPlayer(playerData) {
     if (!playerData || !playerData.id) return null;
 
-    // Avoid duplicates
     if (this.players.has(playerData.id)) {
       this.updatePlayer(playerData);
       return this.players.get(playerData.id);
@@ -34,6 +33,27 @@ export class RemotePlayerManager {
     }
   }
 
+  triggerRemoteShot(shooterId, origin, dir, hitPoint) {
+    const player = this.players.get(shooterId);
+    if (player) {
+      player.triggerShotEffect(hitPoint);
+    }
+  }
+
+  setPlayerDead(playerId, isDead) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.setDead(isDead);
+    }
+  }
+
+  respawnPlayer(playerId, x, y, z, yaw) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.respawn(x, y, z, yaw);
+    }
+  }
+
   removePlayer(playerId) {
     const player = this.players.get(playerId);
     if (player) {
@@ -49,6 +69,10 @@ export class RemotePlayerManager {
 
   update(delta) {
     this.players.forEach(player => player.update(delta));
+  }
+
+  getPlayer(playerId) {
+    return this.players.get(playerId);
   }
 
   getPlayerCount() {

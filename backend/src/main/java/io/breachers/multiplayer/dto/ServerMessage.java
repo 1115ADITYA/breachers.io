@@ -75,4 +75,98 @@ public sealed interface ServerMessage {
             this("PONG", System.currentTimeMillis());
         }
     }
+
+    record ShotFired(
+            String type,
+            String shooterId,
+            String weapon,
+            double originX,
+            double originY,
+            double originZ,
+            double dirX,
+            double dirY,
+            double dirZ,
+            Double hitX,
+            Double hitY,
+            Double hitZ
+    ) implements ServerMessage {
+        public ShotFired(String shooterId, String weapon, double originX, double originY, double originZ,
+                         double dirX, double dirY, double dirZ, Double hitX, Double hitY, Double hitZ) {
+            this("SHOT_FIRED", shooterId, weapon, originX, originY, originZ, dirX, dirY, dirZ, hitX, hitY, hitZ);
+        }
+    }
+
+    record WeaponState(
+            String type,
+            String weapon,
+            int clip,
+            int reserve,
+            boolean isReloading
+    ) implements ServerMessage {
+        public WeaponState(String weapon, int clip, int reserve, boolean isReloading) {
+            this("WEAPON_STATE", weapon, clip, reserve, isReloading);
+        }
+    }
+
+    record HealthUpdated(
+            String type,
+            String playerId,
+            int health,
+            int maxHealth
+    ) implements ServerMessage {
+        public HealthUpdated(String playerId, int health, int maxHealth) {
+            this("HEALTH_UPDATED", playerId, health, maxHealth);
+        }
+    }
+
+    record PlayerHit(
+            String type,
+            String shooterId,
+            String victimId,
+            int damage,
+            boolean isHeadshot,
+            int healthRemaining
+    ) implements ServerMessage {
+        public PlayerHit(String shooterId, String victimId, int damage, boolean isHeadshot, int healthRemaining) {
+            this("PLAYER_HIT", shooterId, victimId, damage, isHeadshot, healthRemaining);
+        }
+    }
+
+    record PlayerDied(
+            String type,
+            String victimId,
+            String killerId,
+            String killerName,
+            String victimName,
+            String weapon
+    ) implements ServerMessage {
+        public PlayerDied(String victimId, String killerId, String killerName, String victimName, String weapon) {
+            this("PLAYER_DIED", victimId, killerId, killerName, victimName, weapon);
+        }
+    }
+
+    record PlayerRespawned(
+            String type,
+            String playerId,
+            double x,
+            double y,
+            double z,
+            double yaw,
+            int health
+    ) implements ServerMessage {
+        public PlayerRespawned(String playerId, double x, double y, double z, double yaw, int health) {
+            this("PLAYER_RESPAWNED", playerId, x, y, z, yaw, health);
+        }
+    }
+
+    record KillFeed(
+            String type,
+            String killerName,
+            String victimName,
+            String weapon
+    ) implements ServerMessage {
+        public KillFeed(String killerName, String victimName, String weapon) {
+            this("KILL_FEED", killerName, victimName, weapon);
+        }
+    }
 }

@@ -1,7 +1,7 @@
 /**
  * HUD
  * Tactical FPS heads-up display managing crosshairs, hitmarkers, health,
- * weapon ammo, damage numbers, and multiplayer connection modal.
+ * weapon slots, ammo counters, kill feed, damage vignette, and death/respawn modal.
  */
 export class HUD {
   constructor(options = {}) {
@@ -12,11 +12,18 @@ export class HUD {
     const randomSuffix = Math.floor(100 + Math.random() * 900);
     this.defaultUsername = localStorage.getItem('breachers_username') || `Operator_${randomSuffix}`;
 
+    this.hitmarkerTimeout = null;
+    this.vignetteTimeout = null;
+    this.deathCountdownInterval = null;
+
     this.initHUD();
   }
 
   initHUD() {
     this.container.innerHTML = `
+      <!-- Damage Vignette Effect -->
+      <div id="damage-vignette" class="damage-vignette"></div>
+
       <!-- Crosshair System -->
       <div id="crosshair-container">
         <div class="crosshair-part crosshair-top"></div>
@@ -43,6 +50,7 @@ export class HUD {
           <span class="arena-badge">ARENA</span>
           <span class="arena-name">CONTAINER YARD — SECTOR 04</span>
         </div>
+        
         <div class="hud-top-right">
           <div id="player-count-badge" class="hud-pill online">
             <span class="indicator-dot"></span>
@@ -55,6 +63,9 @@ export class HUD {
           <div id="fps-counter" class="hud-pill">FPS: --</div>
         </div>
       </header>
+
+      <!-- Kill Feed (Top Right beneath header) -->
+      <div id="kill-feed-container" class="kill-feed-container"></div>
 
       <!-- Bottom HUD: Health and Weapon Ammo -->
       <footer class="hud-bottom">
@@ -71,8 +82,15 @@ export class HUD {
 
         <!-- Weapon & Ammo Group -->
         <div class="weapon-group">
+          <!-- Weapon Slot Switcher Badges -->
+          <div class="weapon-slot-bar">
+            <div id="slot-badge-1" class="slot-badge active"><span class="badge-num">1</span> AR</div>
+            <div id="slot-badge-2" class="slot-badge"><span class="badge-num">2</span> TAC-9</div>
+            <div id="slot-badge-3" class="slot-badge"><span class="badge-num">3</span> KNIFE</div>
+          </div>
+
           <div class="weapon-meta">
-            <span class="weapon-type">PRIMARY</span>
+            <span id="weapon-type-badge" class="weapon-type">SLOT 1 • PRIMARY</span>
             <span id="weapon-name" class="weapon-name">BREACHER-V1 (ASSAULT)</span>
           </div>
           <div class="ammo-display">
@@ -84,13 +102,26 @@ export class HUD {
         </div>
       </footer>
 
+      <!-- Death & Respawn Screen -->
+      <div id="death-overlay" class="death-overlay hidden">
+        <div class="death-card">
+          <div class="death-title">ELIMINATED</div>
+          <div class="death-killer-info">
+            KILLED BY <span id="death-killer-name" class="killer-name">ENEMY</span> WITH <span id="death-weapon-name" class="killer-weapon">WEAPON</span>
+          </div>
+          <div class="respawn-timer-container">
+            RESPAWNING IN <span id="death-timer" class="respawn-seconds">3</span>s
+          </div>
+        </div>
+      </div>
+
       <!-- Multiplayer Deploy & Pause Screen -->
       <div id="pause-screen" class="pause-screen">
         <div class="pause-card">
           <div class="brand-title">BREACHERS<span class="accent">.IO</span></div>
-          <div class="badge-pill">CHUNK 2 — REAL-TIME MULTIPLAYER</div>
+          <div class="badge-pill">CHUNK 3 — MULTIPLAYER COMBAT SYSTEM</div>
           <h2>CONTAINER YARD</h2>
-          <p class="desc">Spring Boot WebSocket real-time synchronized FPS arena.</p>
+          <p class="desc">Server-authoritative Spring Boot WebSocket tactical FPS arena.</p>
 
           <!-- Connection Panel -->
           <div class="connection-panel">
@@ -119,15 +150,15 @@ export class HUD {
           <div class="controls-guide">
             <div class="ctrl-row"><span>WASD</span><span>Move & Slide</span></div>
             <div class="ctrl-row"><span>Mouse</span><span>Aim & Look</span></div>
-            <div class="ctrl-row"><span>Left Click</span><span>Fire Weapon</span></div>
-            <div class="ctrl-row"><span>Space</span><span>Jump / Mantle</span></div>
-            <div class="ctrl-row"><span>Shift</span><span>Tactical Sprint</span></div>
-            <div class="ctrl-row"><span>R</span><span>Reload Weapon</span></div>
+            <div class="ctrl-row"><span>Left Click</span><span>Fire / Melee Attack</span></div>
+            <div class="ctrl-row"><span>1, 2, 3</span><span>Select Assault / Pistol / Knife</span></div>
+            <div class="ctrl-row"><span>R</span><span>Reload Firearm</span></div>
+            <div class="ctrl-row"><span>Space / Shift</span><span>Jump / Sprint</span></div>
             <div class="ctrl-row"><span>Esc</span><span>Pause / Unlock Mouse</span></div>
           </div>
 
           <button id="btn-deploy" class="btn-deploy" type="button">
-            DEPLOY ONLINE
+            DEPLOY TO COMBAT
           </button>
         </div>
       </div>
@@ -137,12 +168,26 @@ export class HUD {
     this.crosshairContainer = document.getElementById('crosshair-container');
     this.hitmarker = document.getElementById('hitmarker');
     this.damageLayer = document.getElementById('damage-numbers-layer');
+    this.damageVignette = document.getElementById('damage-vignette');
+    this.killFeedContainer = document.getElementById('kill-feed-container');
+
     this.healthValue = document.getElementById('health-value');
     this.healthBarFill = document.getElementById('health-bar-fill');
+
+    this.slotBadge1 = document.getElementById('slot-badge-1');
+    this.slotBadge2 = document.getElementById('slot-badge-2');
+    this.slotBadge3 = document.getElementById('slot-badge-3');
+    this.weaponTypeBadge = document.getElementById('weapon-type-badge');
     this.weaponName = document.getElementById('weapon-name');
     this.ammoClip = document.getElementById('ammo-clip');
     this.ammoReserve = document.getElementById('ammo-reserve');
     this.reloadIndicator = document.getElementById('reload-indicator');
+
+    this.deathOverlay = document.getElementById('death-overlay');
+    this.deathKillerName = document.getElementById('death-killer-name');
+    this.deathWeaponName = document.getElementById('death-weapon-name');
+    this.deathTimer = document.getElementById('death-timer');
+
     this.fpsCounter = document.getElementById('fps-counter');
     this.pauseScreen = document.getElementById('pause-screen');
     this.btnDeploy = document.getElementById('btn-deploy');
@@ -161,8 +206,6 @@ export class HUD {
         this.onPlayClick(username);
       }
     });
-
-    this.hitmarkerTimeout = null;
   }
 
   getUsername() {
@@ -232,21 +275,40 @@ export class HUD {
 
     if (pct > 50) {
       this.healthBarFill.style.background = 'linear-gradient(90deg, #00ff88, #00d672)';
+      this.healthBarFill.style.boxShadow = '0 0 10px rgba(0, 255, 136, 0.5)';
     } else if (pct > 25) {
       this.healthBarFill.style.background = 'linear-gradient(90deg, #ffaa00, #ff8800)';
+      this.healthBarFill.style.boxShadow = '0 0 10px rgba(255, 170, 0, 0.5)';
     } else {
       this.healthBarFill.style.background = 'linear-gradient(90deg, #ff3344, #d92030)';
+      this.healthBarFill.style.boxShadow = '0 0 10px rgba(255, 51, 68, 0.7)';
     }
   }
 
-  updateAmmo(clip, reserve, isReloading = false) {
-    this.ammoClip.textContent = clip;
-    this.ammoReserve.textContent = reserve;
+  updateWeaponDisplay(state) {
+    if (!state) return;
 
-    if (isReloading) {
-      this.reloadIndicator.classList.remove('hidden');
-    } else {
-      this.reloadIndicator.classList.add('hidden');
+    if (this.weaponName) this.weaponName.textContent = state.name;
+    if (this.ammoClip) this.ammoClip.textContent = state.clip;
+    if (this.ammoReserve) this.ammoReserve.textContent = state.reserve;
+
+    // Slot badge highlight
+    if (this.slotBadge1) this.slotBadge1.classList.toggle('active', state.slot === 1);
+    if (this.slotBadge2) this.slotBadge2.classList.toggle('active', state.slot === 2);
+    if (this.slotBadge3) this.slotBadge3.classList.toggle('active', state.slot === 3);
+
+    if (this.weaponTypeBadge) {
+      if (state.slot === 1) this.weaponTypeBadge.textContent = 'SLOT 1 • PRIMARY AR';
+      else if (state.slot === 2) this.weaponTypeBadge.textContent = 'SLOT 2 • SECONDARY TAC-9';
+      else this.weaponTypeBadge.textContent = 'SLOT 3 • MELEE KNIFE';
+    }
+
+    if (this.reloadIndicator) {
+      if (state.isReloading) {
+        this.reloadIndicator.classList.remove('hidden');
+      } else {
+        this.reloadIndicator.classList.add('hidden');
+      }
     }
   }
 
@@ -288,5 +350,76 @@ export class HUD {
         el.parentNode.removeChild(el);
       }
     }, 700);
+  }
+
+  flashDamageVignette() {
+    if (!this.damageVignette) return;
+    if (this.vignetteTimeout) clearTimeout(this.vignetteTimeout);
+
+    this.damageVignette.classList.add('flash');
+    this.vignetteTimeout = setTimeout(() => {
+      this.damageVignette.classList.remove('flash');
+    }, 300);
+  }
+
+  addKillFeedEntry(killer, victim, weapon) {
+    if (!this.killFeedContainer) return;
+
+    const entry = document.createElement('div');
+    entry.className = 'kill-feed-entry';
+
+    let iconText = '🔫';
+    if (weapon === 'KNIFE') iconText = '🔪';
+    else if (weapon === 'PISTOL') iconText = '🎯';
+
+    entry.innerHTML = `
+      <span class="kill-killer">${killer}</span>
+      <span class="kill-weapon">${iconText} [${weapon}]</span>
+      <span class="kill-victim">${victim}</span>
+    `;
+
+    this.killFeedContainer.prepend(entry);
+
+    // Fade out and remove after 4.5 seconds
+    setTimeout(() => {
+      entry.classList.add('fade-out');
+      setTimeout(() => {
+        if (entry.parentNode) {
+          entry.parentNode.removeChild(entry);
+        }
+      }, 500);
+    }, 4000);
+  }
+
+  showDeathScreen(killer, weapon, countdownSeconds = 3) {
+    if (!this.deathOverlay) return;
+
+    this.deathKillerName.textContent = killer || 'UNKNOWN';
+    this.deathWeaponName.textContent = weapon || 'WEAPON';
+    this.deathTimer.textContent = countdownSeconds;
+    this.deathOverlay.classList.remove('hidden');
+
+    if (this.deathCountdownInterval) {
+      clearInterval(this.deathCountdownInterval);
+    }
+
+    let remaining = countdownSeconds;
+    this.deathCountdownInterval = setInterval(() => {
+      remaining -= 1;
+      if (remaining >= 0) {
+        this.deathTimer.textContent = remaining;
+      }
+      if (remaining <= 0) {
+        clearInterval(this.deathCountdownInterval);
+      }
+    }, 1000);
+  }
+
+  hideDeathScreen() {
+    if (!this.deathOverlay) return;
+    if (this.deathCountdownInterval) {
+      clearInterval(this.deathCountdownInterval);
+    }
+    this.deathOverlay.classList.add('hidden');
   }
 }

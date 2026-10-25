@@ -627,3 +627,213 @@ html, body {
   box-shadow: 0 0 8px var(--status-red);
 }
 
+/* -------------------------------------------------------------
+   Damage Vignette Screen Flash
+   ------------------------------------------------------------- */
+.damage-vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  box-shadow: inset 0 0 80px rgba(255, 30, 40, 0.85);
+  opacity: 0;
+  transition: opacity 0.08s ease-out;
+  z-index: 5;
+}
+
+.damage-vignette.flash {
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------
+   Weapon Slot Switcher Bar
+   ------------------------------------------------------------- */
+.weapon-slot-bar {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.slot-badge {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  transition: all 0.15s ease;
+}
+
+.slot-badge .badge-num {
+  font-weight: 700;
+  color: var(--accent-orange);
+  margin-right: 2px;
+}
+
+.slot-badge.active {
+  background: rgba(255, 102, 0, 0.25);
+  border-color: var(--accent-orange);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 102, 0, 0.4);
+}
+
+.slot-badge.active .badge-num {
+  color: #ffffff;
+}
+
+/* -------------------------------------------------------------
+   Kill Feed System
+   ------------------------------------------------------------- */
+.kill-feed-container {
+  position: absolute;
+  top: 68px;
+  right: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.kill-feed-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(14, 18, 26, 0.85);
+  border-left: 3px solid var(--accent-orange);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  animation: slideInRight 0.2s ease-out;
+  transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+
+.kill-feed-entry.fade-out {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.kill-killer {
+  font-weight: 700;
+  color: #00e5ff;
+}
+
+.kill-weapon {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.kill-victim {
+  font-weight: 700;
+  color: #ff3344;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* -------------------------------------------------------------
+   Death & Respawn Screen Overlay
+   ------------------------------------------------------------- */
+.death-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 45;
+  background: rgba(20, 5, 8, 0.82);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.death-card {
+  text-align: center;
+  background: rgba(18, 10, 14, 0.9);
+  border: 1px solid rgba(255, 51, 68, 0.4);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8), 0 0 35px rgba(255, 51, 68, 0.3);
+  border-radius: 8px;
+  padding: 32px 48px;
+  position: relative;
+}
+
+.death-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 30px;
+  right: 30px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #ff3344, transparent);
+}
+
+.death-title {
+  font-size: 2.4rem;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: #ff3344;
+  text-shadow: 0 0 20px rgba(255, 51, 68, 0.7);
+  margin-bottom: 12px;
+}
+
+.death-killer-info {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+}
+
+.killer-name {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.killer-weapon {
+  color: var(--accent-orange);
+  font-weight: 700;
+}
+
+.respawn-timer-container {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 10px 24px;
+  border-radius: 4px;
+  display: inline-block;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.respawn-seconds {
+  color: var(--status-green);
+  font-size: 1.4rem;
+  margin: 0 4px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+

@@ -3,7 +3,8 @@ import * as THREE from 'three';
 /**
  * RemotePlayer
  * Renders an animated low-poly 3D character for a remote multiplayer peer,
- * with overhead canvas nameplate and smooth position/rotation interpolation.
+ * with overhead canvas nameplate, held weapon switching, muzzle flashes,
+ * tracers, and death/respawn visual states.
  */
 export class RemotePlayer {
   constructor(playerData, scene) {
@@ -21,18 +22,27 @@ export class RemotePlayer {
     this.targetPitch = playerData.pitch || 0;
     this.isMoving = playerData.isMoving || false;
     this.isSprinting = playerData.isSprinting || false;
+    this.isDead = playerData.isDead || false;
+    this.currentWeapon = playerData.weapon || 'ASSAULT';
 
     // Animation timer for limb swinging
     this.animTimer = 0;
 
+    // Held weapon models
+    this.heldWeapons = {};
+
     this.buildModel();
     this.buildNameplate();
+    this.buildSpawnShield();
 
     this.scene.add(this.group);
+
+    if (this.isDead) {
+      this.setDead(true);
+    }
   }
 
   buildModel() {
-    // Distinct Tactical Materials for Remote Players
     const armorMat = new THREE.MeshStandardMaterial({
       color: 0x1d4ed8, // Tactical Navy Blue
       roughness: 0.5,
@@ -63,14 +73,14 @@ export class RemotePlayer {
       metalness: 0.8
     });
 
-    // 1. Torso & Tactical Vest (Y: 0.8 to 1.4)
+    // 1. Torso & Tactical Vest
     const torsoGeo = new THREE.BoxGeometry(0.55, 0.6, 0.3);
     this.torso = new THREE.Mesh(torsoGeo, armorMat);
     this.torso.position.y = 1.1;
     this.torso.castShadow = true;
     this.group.add(this.torso);
 
-    // 2. Head & Visor (Y: 1.4 to 1.75)
+    // 2. Head & Visor
     const headGeo = new THREE.BoxGeometry(0.3, 0.32, 0.3);
     this.head = new THREE.Mesh(headGeo, skinMat);
     this.head.position.y = 1.58;
@@ -95,11 +105,31 @@ export class RemotePlayer {
     this.rightArm.castShadow = true;
     this.group.add(this.rightArm);
 
-    // 4. Weapon model in right hand
-    const gunGeo = new THREE.BoxGeometry(0.06, 0.1, 0.4);
-    const gun = new THREE.Mesh(gunGeo, weaponMat);
-    gun.position.set(0.36, 1.05, 0.3);
-    this.group.add(gun);
+    // 4. Held Weapons: Assault, Pistol, Knife
+    const arMesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.45), weaponMat);
+    arMesh.position.set(0.36, 1.05, 0.3);
+    this.group.add(arMesh);
+    this.heldWeapons.ASSAULT = arMesh;
+
+    const pistolMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.22), weaponMat);
+    pistolMesh.position.set(0.36, 1.05, 0.22);
+    pistolMesh.visible = false;
+    this.group.add(pistolMesh);
+    this.heldWeapons.PISTOL = pistolMesh;
+
+    const knifeMesh = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.25), weaponMat);
+    knifeMesh.position.set(0.36, 1.05, 0.2);
+    knifeMesh.visible = false;
+    this.group.add(knifeMesh);
+    this.heldWeapons.KNIFE = knifeMesh;
+
+    // Remote Muzzle Flash
+    const flashGeo = new THREE.OctahedronGeometry(0.06, 0);
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.9 });
+    this.muzzleFlash = new THREE.Mesh(flashGeo, flashMat);
+    this.muzzleFlash.position.set(0.36, 1.05, 0.55);
+    this.muzzleFlash.visible = false;
+    this.group.add(this.muzzleFlash);
 
     // 5. Legs
     const legGeo = new THREE.BoxGeometry(0.18, 0.75, 0.2);
@@ -115,24 +145,20 @@ export class RemotePlayer {
   }
 
   buildNameplate() {
-    // Generate high-resolution 2D Canvas for username label
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 64;
     const ctx = canvas.getContext('2d');
 
-    // Background pill
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
     ctx.beginPath();
     ctx.roundRect(12, 10, 232, 44, 8);
     ctx.fill();
 
-    // Border
     ctx.strokeStyle = '#00e5ff';
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Text
     ctx.font = 'bold 24px "Chakra Petch", sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
@@ -148,6 +174,96 @@ export class RemotePlayer {
     this.nameplate.scale.set(1.6, 0.4, 1.0);
 
     this.group.add(this.nameplate);
+  }
+
+  buildSpawnShield() {
+    const geo = new THREE.CylinderGeometry(0.7, 0.7, 1.9, 16, 1, true);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x00e5ff,
+      transparent: true,
+      opacity: 0.3,
+      side: THREE.DoubleSide
+    });
+    this.spawnShield = new THREE.Mesh(geo, mat);
+    this.spawnShield.position.y = 0.95;
+    this.spawnShield.visible = false;
+    this.group.add(this.spawnShield);
+  }
+
+  switchHeldWeapon(weaponType) {
+    if (!weaponType) return;
+    this.currentWeapon = weaponType;
+    Object.keys(this.heldWeapons).forEach(k => {
+      this.heldWeapons[k].visible = (k === weaponType);
+    });
+  }
+
+  triggerShotEffect(hitPoint) {
+    if (this.currentWeapon !== 'KNIFE') {
+      this.muzzleFlash.visible = true;
+      setTimeout(() => {
+        this.muzzleFlash.visible = false;
+      }, 45);
+
+      if (hitPoint) {
+        // Spawn remote tracer to hit point
+        const origin = new THREE.Vector3();
+        this.muzzleFlash.getWorldPosition(origin);
+        const target = new THREE.Vector3(hitPoint.x, hitPoint.y, hitPoint.z);
+
+        const dir = target.clone().sub(origin);
+        const dist = dir.length();
+        dir.normalize();
+
+        const geo = new THREE.CylinderGeometry(0.015, 0.015, Math.min(dist, 4.0), 6);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffe680, transparent: true, opacity: 0.95 });
+        const tracer = new THREE.Mesh(geo, mat);
+        tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        tracer.position.copy(origin).add(dir.clone().multiplyScalar(2.0));
+
+        this.scene.add(tracer);
+
+        let life = 0.25;
+        const tickTracer = () => {
+          tracer.position.addScaledVector(dir, 160 * 0.016);
+          life -= 0.016;
+          if (life <= 0) {
+            this.scene.remove(tracer);
+            tracer.geometry.dispose();
+            tracer.material.dispose();
+          } else {
+            requestAnimationFrame(tickTracer);
+          }
+        };
+        requestAnimationFrame(tickTracer);
+      }
+    }
+  }
+
+  setDead(isDead) {
+    this.isDead = isDead;
+    if (isDead) {
+      this.nameplate.visible = false;
+      this.group.rotation.x = Math.PI / 2; // Collapse to ground
+      this.group.position.y = 0.2;
+    } else {
+      this.nameplate.visible = true;
+      this.group.rotation.x = 0;
+    }
+  }
+
+  respawn(x, y, z, yaw) {
+    this.targetPos.set(x, y, z);
+    this.group.position.set(x, y, z);
+    this.targetYaw = yaw;
+    this.group.rotation.set(0, yaw, 0);
+    this.setDead(false);
+
+    // Show temporary spawn shield for 2 seconds
+    this.spawnShield.visible = true;
+    setTimeout(() => {
+      this.spawnShield.visible = false;
+    }, 2000);
   }
 
   updateState(moveData) {
@@ -166,14 +282,22 @@ export class RemotePlayer {
     if (moveData.isSprinting !== undefined) {
       this.isSprinting = moveData.isSprinting;
     }
+    if (moveData.weapon !== undefined && moveData.weapon !== this.currentWeapon) {
+      this.switchHeldWeapon(moveData.weapon);
+    }
+    if (moveData.isDead !== undefined && moveData.isDead !== this.isDead) {
+      this.setDead(moveData.isDead);
+    }
   }
 
   update(delta) {
-    // 1. Smooth Position Interpolation (Lerp)
+    if (this.isDead) return;
+
+    // 1. Smooth Position Interpolation
     const lerpSpeed = 16.0;
     this.group.position.lerp(this.targetPos, Math.min(1.0, delta * lerpSpeed));
 
-    // 2. Smooth Yaw Rotation (handling angular wrap-around)
+    // 2. Smooth Yaw Rotation
     const diff = (this.targetYaw - this.group.rotation.y + Math.PI * 3) % (Math.PI * 2) - Math.PI;
     this.group.rotation.y += diff * Math.min(1.0, delta * lerpSpeed);
 
@@ -192,10 +316,14 @@ export class RemotePlayer {
       this.rightLeg.rotation.x = -swing;
       this.leftArm.rotation.x = -swing * 0.6;
     } else {
-      // Return limbs to neutral
       this.leftLeg.rotation.x = THREE.MathUtils.lerp(this.leftLeg.rotation.x, 0, delta * 12);
       this.rightLeg.rotation.x = THREE.MathUtils.lerp(this.rightLeg.rotation.x, 0, delta * 12);
       this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, 0, delta * 12);
+    }
+
+    // Spawn shield pulse
+    if (this.spawnShield.visible) {
+      this.spawnShield.rotation.y += delta * 2.0;
     }
   }
 
@@ -204,7 +332,6 @@ export class RemotePlayer {
       this.group.parent.remove(this.group);
     }
 
-    // Recursive cleanup of geometries and materials
     this.group.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {

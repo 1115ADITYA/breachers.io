@@ -171,13 +171,58 @@ To execute the automated 2-client synchronization test (verifies join, snapshot 
 node scratch/test-multiplayer-two-clients.js
 ```
 
-#### Manual Dual-Browser Test
+---
+
+## Chunk 3: Multiplayer Combat System
+
+Chunk 3 implements complete, server-authoritative multiplayer combat across all connected clients.
+
+### Weapon Specifications & Balance Values
+
+| Weapon | Slot | RPM / Fire Rate | Base Damage | Headshot (1.8x) | Magazine / Reserve | Reload Duration | Range | Mode |
+|---|---|---|---|---|---|---|---|---|
+| **Assault Rifle** (Breacher-V1) | 1 | ~545 RPM (0.11s) | 24 | 43 | 30 / 90 | 1.8s | 120m | Automatic |
+| **Pistol** (TAC-9) | 2 | Semi-auto (0.25s) | 38 | 68 | 12 / 36 | 1.4s | 80m | Semi-Automatic |
+| **Tactical Knife** | 3 | Melee (0.50s) | 55 | 99 | $\infty$ / — | Instant | 2.5m | Close-Range Melee |
+
+### Combat Controls
+- `1`, `2`, `3`: Select Assault Rifle, Pistol, or Knife.
+- `Left Click`: Fire firearm or melee attack.
+- `R`: Reload firearm.
+- `Esc`: Pause / unlock mouse cursor.
+
+### Server-Authoritative Architecture & Hit Validation
+All damage calculations, hit validation, ammo consumption, cooldown checks, and death attribution are performed exclusively on the Java 21 Spring Boot backend:
+1. **Shot Submission (`SHOOT`)**: The client requests a shot with weapon ID, sequence ID, and ray direction.
+2. **Authoritative Origin & Bounds**: The server derives the ray origin from the shooter's verified position $(x, y + 1.62\text{ m}, z)$ and clamps client offsets to within 3m. Rate limits, cooldowns, and ammo availability are strictly enforced.
+3. **Ray-Hitbox Intersection**: Target players are modeled with axis-aligned hitboxes $(x \pm 0.55\text{ m}, z \pm 0.55\text{ m}, y \dots y + 1.85\text{ m})$.
+4. **Headshot Detection**: Hits where ray intersection $y \ge position.y + 1.40\text{ m}$ inflict a $1.8\times$ critical headshot multiplier.
+5. **Spawn Protection & State**: Players enjoy 2 seconds of invulnerability upon spawn/respawn. Eliminated players are placed into a dead state, disabling fire and movement while queuing automated respawn after 3 seconds at a valid map spawn point.
+6. **Synchronized Broadcasts**: Confirmed shot impacts (`SHOT_FIRED`), health updates (`HEALTH_UPDATED`), eliminations (`PLAYER_DIED`), respawns (`PLAYER_RESPAWNED`), and global kill-feed notifications (`KILL_FEED`) are broadcast to all clients in real time.
+
+### Automated Combat Test Suite
+Run the live end-to-end combat integration tests:
+```bash
+# Run Pistol combat & respawn flow
+node scratch/test-live-combat.mjs
+
+# Run Knife melee attack & Assault Rifle elimination flow
+node scratch/test-knife-and-rifle.mjs
+```
+
+### Manual Dual-Browser Combat Test
 1. Ensure the Spring Boot backend (`:8081`) and Vite frontend (`:5173`) are running.
 2. Open Browser Window 1 at `http://localhost:5173`:
-   - Enter callsign (e.g. `Alpha_One`).
-   - Click **DEPLOY ONLINE**.
-3. Open Browser Window 2 (or an Incognito window) at `http://localhost:5173`:
-   - Enter callsign (e.g. `Bravo_Two`).
-   - Click **DEPLOY ONLINE**.
-4. Both players will see each other's 3D character model, overhead username billboards, and real-time interpolated movement inside the Container Yard map.
+   - Enter callsign `Striker_Alpha`.
+   - Click **DEPLOY TO COMBAT**.
+3. Open Browser Window 2 (or Incognito) at `http://localhost:5173`:
+   - Enter callsign `Ghost_Beta`.
+   - Click **DEPLOY TO COMBAT**.
+4. Test Combat Interactions:
+   - Walk both players into visual contact in the Container Yard.
+   - Switch weapons with `1`, `2`, `3`.
+   - Fire at each other: observe real-time health bar depletion, red damage screen vignette on the victim, and hitmarkers/floating damage numbers on the shooter.
+   - Inflict lethal damage: observe victim elimination, death overlay with 3s countdown, and top-right kill-feed entry.
+   - Verify victim respawns with 100 HP, 2s glowing spawn protection shield, and full primary ammunition restored.
+
 
