@@ -73,6 +73,7 @@ export class MenuController {
             <button class="nav-tab" data-screen="LOADOUT">LOADOUT</button>
             <button class="nav-tab" data-screen="MAPS">MAPS</button>
             <button class="nav-tab" data-screen="SETTINGS">SETTINGS</button>
+            <button class="nav-tab btn-report-pill" id="btn-academic-report" title="View Academic JDBC & Servlet Report">REPORT 📊</button>
           </nav>
 
           <div class="topbar-user-panel">
@@ -382,9 +383,24 @@ export class MenuController {
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         const target = tab.getAttribute('data-screen');
-        this.navigateTo(target);
+        if (target) {
+          this.navigateTo(target);
+        }
       });
     });
+
+    // Academic Servlet Report Link
+    const btnReport = document.getElementById('btn-academic-report');
+    if (btnReport) {
+      btnReport.addEventListener('click', () => {
+        const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
+          ? import.meta.env.VITE_API_BASE_URL
+          : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:8081'
+            : '');
+        window.open(`${apiBase}/academic/match-report`, '_blank');
+      });
+    }
 
     // Callsign Save
     const btnSaveCallsign = document.getElementById('btn-save-callsign');

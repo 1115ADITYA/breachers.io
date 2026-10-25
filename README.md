@@ -619,5 +619,176 @@ Breachers.io Chunk 8 introduces dynamic environmental hazards, physical boost me
 
 
 
+---
 
+## Chunk 7A — Production Deployment Readiness
 
+Breachers.io is configured for decoupled cloud deployment: the static Three.js WebGL client deploys to **Vercel** (or Netlify/Cloudflare Pages), while the Java 21 Spring Boot server deploys to any container/Java platform (**Render**, **Railway**, **Fly.io**, **AWS App Runner**, or custom VPS).
+
+---
+
+### 1. Local Development Commands
+
+#### Backend (Spring Boot 3.4 + Java 21)
+```powershell
+# From project root:
+cd backend
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-26.0.2" # Adjust for your JDK 21+ location
+.\mvnw.cmd spring-boot:run
+```
+- Server starts on `http://localhost:8081` (or port specified by `PORT` / `SERVER_PORT`).
+- Default local profile uses the embedded **H2 in-memory database** (`jdbc:h2:mem:breachersdb`).
+- Health probes: `http://localhost:8081/api/health` and `http://localhost:8081/health`.
+- Academic report: `http://localhost:8081/academic/match-report` (`?format=json`).
+
+#### Frontend (Vite + Three.js)
+```bash
+# From project root:
+cd frontend
+npm install
+npm run dev
+```
+- Vite dev server starts on `http://localhost:5173`.
+- In development, Vite automatically proxies `/api`, `/academic`, and `/ws` to `http://localhost:8081` (unless overridden via `VITE_API_BASE_URL` and `VITE_WS_URL`).
+
+---
+
+### 2. Frontend Deployment to Vercel
+
+The frontend is an SPA built with Vite and Three.js, with WebAssembly support for Rapier 3D physics.
+
+#### Vercel Project Settings
+When importing the Git repository in your Vercel Dashboard:
+- **Framework Preset**: `Vite`
+- **Root Directory**: `frontend` *(CRITICAL: Breachers.io is a monorepo. Set this to `frontend` so Vercel locates `package.json`)*
+- **Build Command**: `npm run build`
+- **Output Directory**: `dist`
+- **Install Command**: `npm install`
+
+#### Vercel Environment Variables
+Add the following in **Vercel Project Settings ➔ Environment Variables**:
+| Variable Name | Example Production Value | Description |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `https://breachers-backend.onrender.com` | Public HTTPS URL of the deployed Spring Boot backend. |
+| `VITE_WS_URL` | `wss://breachers-backend.onrender.com/ws/game` | Public secure WebSocket URL (`wss://`) of the backend. |
+
+#### Routing & Asset Integrity (`vercel.json`)
+The included `frontend/vercel.json` configures:
+- SPA client-side rewrite fallback to `/index.html`.
+- Immutable HTTP caching (`Cache-Control: public, max-age=31536000, immutable`) for WebAssembly binaries (`.wasm`) and 3D GLB maps (`/assets/maps/warehouse.glb`).
+
+---
+
+### 3. Backend Deployment (Render, Railway, Fly.io, or Docker)
+
+The backend runs as an executable Spring Boot JAR or a lightweight container built with Eclipse Temurin Java 21 Alpine.
+
+#### Option A: Docker Deployment (Recommended)
+A multi-stage `Dockerfile` is provided in `backend/Dockerfile`:
+```bash
+cd backend
+docker build -t breachers-backend .
+docker run -p 8081:8081 -e PORT=8081 -e CORS_ALLOWED_ORIGINS="https://your-app.vercel.app" breachers-backend
+```
+
+#### Option B: Native Spring Boot Service (Render / Railway)
+- **Root Directory**: `backend`
+- **Build Command**: `./mvnw clean package -DskipTests`
+- **Start Command**: `java -Dserver.port=$PORT -jar target/breachers-backend-0.1.0-SNAPSHOT.jar`
+- **Port Handling**: The application natively checks the cloud provider's `PORT` environment variable (`server.port: ${PORT:${SERVER_PORT:8081}}`).
+
+#### Required Backend Environment Variables
+| Variable Name | Example Production Value | Purpose |
+| --- | --- | --- |
+| `PORT` | `10000` (Assigned by host) | Cloud web service listen port. |
+| `SPRING_PROFILES_ACTIVE` | `prod` | Activates PostgreSQL datasource profile. |
+| `CORS_ALLOWED_ORIGINS` | `https://breachers.vercel.app,https://*.vercel.app` | Comma-separated allowed frontend origins for REST and WebSockets. |
+| `DATABASE_URL` | `postgres://user:pass@ep-host.neon.tech/breachersdb?sslmode=require` | PostgreSQL connection URL. Automatically normalized into standard JDBC syntax. |
+
+---
+
+### 4. PostgreSQL Configuration & Persistence
+
+#### In-Memory vs. Production Mode
+- **Local Dev / Testing**: Runs with H2 in-memory database (`spring.profiles.active: default`). Zero external dependencies.
+- **Production Persistence**: Set `SPRING_PROFILES_ACTIVE=prod`. Match histories, round scores, and operator stats persist indefinitely across server restarts.
+
+#### Cloud Database URI Auto-Normalization
+Cloud database providers (Render PostgreSQL, Neon, Railway, Supabase) typically supply `DATABASE_URL` in URI format:
+```
+postgres://user:password@host:port/database?sslmode=require
+```
+Standard Java JDBC requires:
+```
+jdbc:postgresql://host:port/database?sslmode=require
+```
+Breachers.io features custom database initialization (`DatabaseConfig.java`) that **automatically parses and normalizes** `postgres://` or `postgresql://` URIs, extracts credentials, and configures the HikariCP connection pool with SSL support.
+
+Alternatively, you can provide standard Spring JDBC variables:
+```bash
+SPRING_DATASOURCE_URL=jdbc:postgresql://host:5432/database?sslmode=require
+SPRING_DATASOURCE_USERNAME=your_username
+SPRING_DATASOURCE_PASSWORD=your_password
+```
+
+#### Schema Migration
+The `schema.sql` script executes on startup, utilizing ANSI-standard SQL (`BIGINT GENERATED ALWAYS AS IDENTITY`, `VARCHAR`, `TIMESTAMP`) compatible with both H2 and PostgreSQL.
+
+---
+
+### 5. HTTPS and Secure WebSockets (`wss://`)
+
+> [!WARNING]
+> Modern web browsers enforce strict **Mixed Content** security rules. If your frontend is accessed over `https://` (e.g. on Vercel), the browser **will block** unencrypted WebSocket connections (`ws://`).
+
+1. **Protocol Parity**:
+   - Local: `http://localhost:5173` connects to `ws://localhost:8081/ws/game`.
+   - Production: `https://your-domain.vercel.app` must connect to `wss://your-backend.com/ws/game`.
+2. **TLS Termination**: Cloud hosting providers (Render, Railway, Fly.io) terminate TLS automatically at their reverse proxy and forward traffic to the Spring Boot container over HTTP/1.1 WebSocket upgrade headers (`Upgrade: websocket`).
+3. **CORS & Origin Validation**: `CorsConfig.java` and `WebSocketConfig.java` support wildcard origin patterns (`allowedOriginPatterns`), allowing preview deployments (e.g., `https://*-yourteam.vercel.app`) to establish WebSocket connections while blocking unauthorized domains.
+
+---
+
+### 6. Safe Configuration Templates (`.env.example`)
+
+Safe environment templates are located at:
+- `/.env.example` — Root overview template.
+- `/frontend/.env.example` — Frontend Vite placeholders.
+- `/backend/.env.example` — Backend datasource and hosting placeholders.
+
+Never commit `.env` or production credentials to version control.
+
+---
+
+### 7. Post-Deployment Verification
+
+Once frontend and backend services are deployed, perform the following verification checks:
+
+1. **Backend Health Probe**:
+   ```bash
+   curl -i https://<your-backend-host>/api/health
+   ```
+   *Expected*: `200 OK`, JSON with `"status": "UP"`.
+2. **Academic Servlet Report**:
+   ```bash
+   curl -i https://<your-backend-host>/academic/match-report?format=json
+   ```
+   *Expected*: `200 OK`, JSON confirming active `matchPersistenceService` and `databaseProduct`.
+3. **Frontend Connection**:
+   - Open your deployed Vercel URL in a browser.
+   - Open DevTools (`F12` ➔ Console & Network).
+   - Verify WebSocket handshake: `wss://<your-backend-host>/ws/game` returns `101 Switching Protocols`.
+   - Click the **REPORT 📊** button in the main lobby navigation to view live match statistics.
+
+---
+
+### 8. Troubleshooting Common Production Pitfalls
+
+| Symptom | Cause | Solution |
+| --- | --- | --- |
+| **`WebSocket connection to 'ws://...' failed: Mixed Content`** | Frontend is served on HTTPS, but attempting an unencrypted `ws://` connection. | Update Vercel environment variable `VITE_WS_URL` to start with `wss://`. |
+| **`HTTP 403 Forbidden` on WebSocket Handshake** | Backend rejected the client origin (`Origin` header mismatch). | Set `CORS_ALLOWED_ORIGINS` on the backend to match your Vercel URL (e.g., `https://your-app.vercel.app,https://*.vercel.app`). |
+| **Warehouse 3D GLB Map 404 Not Found** | Incorrect asset path or missing public assets in build directory. | Verified: `WarehouseMap.js` uses dynamic `import.meta.env.BASE_URL`. Ensure `frontend/public/assets/` is deployed. |
+| **`Connection refused` or `Invalid JDBC URL format`** | Raw cloud `postgres://` URI passed to driver without JDBC prefix. | Handled automatically by `DatabaseConfig.java`. Or set `JDBC_DATABASE_URL` explicitly. |
+| **`Port already in use` or container fails health check** | Hardcoded port mismatch. | Handled: Spring Boot listens on `${PORT:${SERVER_PORT:8081}}` as required by cloud platforms. |
+| **WebSocket disconnects after 60 seconds of inactivity** | Cloud load balancer timeout (idle connection pruning). | Breachers.io includes client ping/pong keepalives (`PING` / `PONG`) every 15s in `GameNetwork.js`. |

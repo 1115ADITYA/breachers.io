@@ -7,8 +7,15 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
+import java.util.Arrays;
 import java.util.List;
 
+/**
+ * WebSocketConfig
+ * Configures Spring WebSocket transport at endpoint `/ws/game`.
+ * Supports persistent real-time multiplayer connections and production origin filtering
+ * matching the deployed Vercel frontend domain.
+ */
 @Configuration
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
@@ -18,15 +25,23 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     public WebSocketConfig(
             GameWebSocketHandler gameWebSocketHandler,
-            @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}") List<String> allowedOrigins
+            @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}") String originsConfig
     ) {
         this.gameWebSocketHandler = gameWebSocketHandler;
-        this.allowedOrigins = allowedOrigins;
+        this.allowedOrigins = Arrays.stream(originsConfig.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.endsWith("/") ? s.substring(0, s.length() - 1) : s)
+                .toList();
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(gameWebSocketHandler, "/ws/game")
-                .setAllowedOrigins(allowedOrigins.toArray(new String[0]));
+                .setAllowedOriginPatterns(allowedOrigins.toArray(new String[0]));
+    }
+
+    public List<String> getAllowedOrigins() {
+        return allowedOrigins;
     }
 }

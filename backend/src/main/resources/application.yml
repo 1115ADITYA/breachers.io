@@ -1,14 +1,14 @@
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${PORT:${SERVER_PORT:8081}}
 
 spring:
   application:
     name: breachers-backend
   datasource:
-    url: jdbc:h2:mem:breachersdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driverClassName: org.h2.Driver
-    username: sa
-    password: ""
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:breachersdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    driverClassName: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   sql:
     init:
       mode: always
@@ -16,11 +16,9 @@ spring:
 app:
   version: 0.1.0
   cors:
-    allowed-origins:
-      - "http://localhost:5173"
-      - "http://127.0.0.1:5173"
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
 logging:
   level:
-    root: INFO
-    io.breachers: DEBUG
+    root: ${LOG_LEVEL_ROOT:INFO}
+    io.breachers: ${LOG_LEVEL_APP:DEBUG}

@@ -117,8 +117,10 @@ export class WarehouseMap {
     if (this.isLoaded) return Promise.resolve(this);
 
     return new Promise((resolve, reject) => {
-      const loader = new GLTFLoader();
-      const assetUrl = '/assets/maps/warehouse.glb';
+      const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL)
+        ? import.meta.env.BASE_URL
+        : '/';
+      const assetUrl = `${base.replace(/\/$/, '')}/assets/maps/warehouse.glb`;
 
       loader.load(
         assetUrl,

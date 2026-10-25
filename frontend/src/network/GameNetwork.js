@@ -6,11 +6,22 @@
  */
 export class GameNetwork {
   constructor(options = {}) {
-    const defaultHost = window.location.hostname || 'localhost';
-    const defaultPort = '8081';
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Environment-based WebSocket configuration (Priority: options.url > VITE_WS_URL > local auto-detection)
+    const envWsUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL)
+      ? import.meta.env.VITE_WS_URL
+      : null;
 
-    this.url = options.url || `${protocol}//${defaultHost}:${defaultPort}/ws/game`;
+    if (options.url) {
+      this.url = options.url;
+    } else if (envWsUrl) {
+      this.url = envWsUrl;
+    } else {
+      const defaultHost = (typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'localhost';
+      const defaultPort = '8081';
+      const protocol = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+      this.url = `${protocol}//${defaultHost}:${defaultPort}/ws/game`;
+    }
+
     this.socket = null;
     this.isConnected = false;
     this.isConnecting = false;
