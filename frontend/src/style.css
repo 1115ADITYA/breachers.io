@@ -2739,6 +2739,302 @@ html, body {
   font-weight: 700;
 }
 
+/* ==========================================================================
+   CHUNK 8: KILL FEED, PROMPTS, GAMEPLAY TOASTS & TAB SCOREBOARD
+   ========================================================================== */
+
+/* 1. Live Kill Feed (Top-Right) */
+.kill-feed-container {
+  position: absolute;
+  top: 70px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 100;
+  max-width: 380px;
+}
+
+.kill-feed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(11, 15, 23, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid var(--accent-cyan);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f8fafc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  animation: slideInRight 0.25s ease-out;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.kill-feed-item.barrel-breach {
+  border-left: 3px solid #f97316;
+  background: rgba(24, 16, 10, 0.92);
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.35);
+}
+
+.kill-feed-killer {
+  color: #38bdf8;
+}
+
+.kill-feed-killer.team-red { color: #f87171; }
+.kill-feed-killer.team-blue { color: #60a5fa; }
+
+.kill-feed-victim {
+  color: #94a3b8;
+}
+
+.kill-feed-victim.team-red { color: #f87171; }
+.kill-feed-victim.team-blue { color: #60a5fa; }
+
+.kill-feed-weapon {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #cbd5e1;
+}
+
+.breach-badge {
+  background: linear-gradient(135deg, #f97316, #e11d48);
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  font-weight: 800;
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 2. Interaction Reticle Prompt (Center) */
+.interaction-prompt {
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(6, 182, 212, 0.5);
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
+  border-radius: 6px;
+  padding: 6px 16px;
+  pointer-events: none;
+  z-index: 90;
+  transition: opacity 0.15s ease;
+}
+
+.interaction-prompt.barrel {
+  border-color: rgba(249, 115, 22, 0.6);
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.3);
+}
+
+.interaction-prompt.bounce {
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+}
+
+.prompt-text {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #f1f5f9;
+  text-transform: uppercase;
+}
+
+.prompt-key {
+  color: #06b6d4;
+  font-weight: 900;
+}
+
+/* 3. Gameplay Toasts (Centered Banners) */
+.gameplay-toast {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 110;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  animation: toastPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: opacity 0.3s ease;
+}
+
+.gameplay-toast.alert {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #38bdf8;
+  color: #38bdf8;
+}
+
+.gameplay-toast.collected {
+  background: rgba(6, 78, 59, 0.95);
+  border: 1px solid #10b981;
+  color: #34d399;
+}
+
+.gameplay-toast.bounce {
+  background: rgba(49, 46, 129, 0.95);
+  border: 1px solid #6366f1;
+  color: #a5b4fc;
+}
+
+.gameplay-toast.breach {
+  background: linear-gradient(135deg, rgba(124, 45, 18, 0.96), rgba(153, 27, 27, 0.96));
+  border: 2px solid #f97316;
+  color: #fef08a;
+  box-shadow: 0 0 25px rgba(249, 115, 22, 0.6);
+}
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.toast-title {
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+}
+
+.toast-sub {
+  font-size: 0.72rem;
+  color: #fde047;
+  font-family: var(--font-mono);
+}
+
+@keyframes toastPop {
+  0% { opacity: 0; transform: translate(-50%, -20px) scale(0.9); }
+  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/* 4. Tab Scoreboard Overlay */
+.tab-scoreboard-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 7, 18, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 120;
+  pointer-events: none;
+}
+
+.tab-scoreboard-card {
+  width: 90%;
+  max-width: 720px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+}
+
+.tab-scoreboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.tab-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+}
+
+.tab-meta {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.tab-scores-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+
+.tab-team-score {
+  flex: 1;
+  padding: 8px 14px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.tab-team-score.red {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+}
+
+.tab-team-score.blue {
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid #3b82f6;
+  color: #93c5fd;
+}
+
+.tab-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.tab-score-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #64748b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.tab-score-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+}
+
+.tab-score-row.local-player {
+  background: rgba(6, 182, 212, 0.15);
+  border-left: 3px solid #06b6d4;
+  font-weight: 700;
+}
+
+.tab-score-row.local-player td {
+  color: #ffffff;
+}
+
+
 
 
 

@@ -91,6 +91,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             case ClientMessage.ReturnToLobby returnToLobby -> {
                 sessionManager.returnToLobby(session.getId());
             }
+            case ClientMessage.ShootBarrel shootBarrel -> {
+                sessionManager.handleShootBarrel(session.getId(), shootBarrel);
+            }
+            case ClientMessage.PickupLoot pickupLoot -> {
+                sessionManager.handlePickupLoot(session.getId(), pickupLoot);
+            }
         }
     }
 

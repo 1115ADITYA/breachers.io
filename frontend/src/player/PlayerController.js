@@ -61,6 +61,12 @@ export class PlayerController {
     // Weapon reference
     this.weapon = null;
 
+    // Chunk 8 Interactive Entities & Network
+    this.bounceTyres = [];
+    this.explosiveBarrels = [];
+    this.lootManager = null;
+    this.network = null;
+
     this.initEventListeners();
   }
 
@@ -81,6 +87,22 @@ export class PlayerController {
 
   setWeapon(weapon) {
     this.weapon = weapon;
+  }
+
+  setBounceTyres(tyres) {
+    this.bounceTyres = tyres || [];
+  }
+
+  setExplosiveBarrels(barrels) {
+    this.explosiveBarrels = barrels || [];
+  }
+
+  setLootManager(lootManager) {
+    this.lootManager = lootManager;
+  }
+
+  setNetwork(network) {
+    this.network = network;
   }
 
   isProtected() {
@@ -223,11 +245,30 @@ export class PlayerController {
         case 'Digit3':
           if (this.weapon) this.weapon.switchWeapon('KNIFE');
           break;
+        case 'KeyE':
+          if (this.lootManager && this.lootManager.currentTargetLoot && this.network) {
+            this.network.pickupLoot(this.lootManager.currentTargetLoot.lootId);
+          }
+          break;
+        case 'Tab':
+          e.preventDefault();
+          if (this.hud && this.hud.showScoreboard) {
+            this.hud.showScoreboard(true);
+          }
+          break;
       }
     });
 
     window.addEventListener('keyup', (e) => {
       if (!this.enabled) return;
+
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        if (this.hud && this.hud.showScoreboard) {
+          this.hud.showScoreboard(false);
+        }
+        return;
+      }
 
       switch (e.code) {
         case 'KeyW':
@@ -357,14 +398,61 @@ export class PlayerController {
     if (collisionResult.hitHead && this.velocity.y > 0) {
       this.velocity.y = 0;
     }
-    if (this.isGrounded && this.velocity.y < 0) {
-      this.velocity.y = 0;
+    // 4. Check interactive tyre bounce boost
+    if (this.bounceTyres && this.bounceTyres.length > 0) {
+      for (const tyre of this.bounceTyres) {
+        if (tyre.checkPlayerBounce(this.position, this.velocity.y)) {
+          this.velocity.y = 15.0; // Launch upward ~3.5 - 4m
+          this.isGrounded = false;
+          tyre.triggerBounce(this.camera?.parent || this.camera);
+          if (this.hud && this.hud.showBounceBoost) {
+            this.hud.showBounceBoost();
+          }
+          break;
+        }
+      }
     }
 
-    // 4. Update First-person camera transform
+    // 5. Update interaction prompt on HUD
+    if (this.lootManager && this.lootManager.currentTargetLoot) {
+      const loot = this.lootManager.currentTargetLoot;
+      this.hud.showInteractionPrompt(`[E] PICK UP AMMO (+${loot.amount} ${loot.ammoType})`);
+    } else {
+      let promptShown = false;
+      const ray = new THREE.Ray();
+      this.camera.getWorldPosition(ray.origin);
+      this.camera.getWorldDirection(ray.direction);
+
+      if (this.explosiveBarrels) {
+        for (const barrel of this.explosiveBarrels) {
+          const hit = barrel.checkHit(ray, 6.0);
+          if (hit) {
+            this.hud.showInteractionPrompt('EXPLOSIVE BARREL [HAZARD]');
+            promptShown = true;
+            break;
+          }
+        }
+      }
+      if (!promptShown && this.bounceTyres) {
+        for (const tyre of this.bounceTyres) {
+          const dx = this.position.x - tyre.x;
+          const dz = this.position.z - tyre.z;
+          if (dx * dx + dz * dz < 9.0) {
+            this.hud.showInteractionPrompt('BOUNCE TYRE [STEP TO BOOST]');
+            promptShown = true;
+            break;
+          }
+        }
+      }
+      if (!promptShown) {
+        this.hud.hideInteractionPrompt();
+      }
+    }
+
+    // 6. Update First-person camera transform
     this.updateCamera();
 
-    // 5. Update weapon viewmodel
+    // 7. Update weapon viewmodel
     if (this.weapon) {
       this.weapon.update(delta, this.isMoving, this.isSprinting);
     }

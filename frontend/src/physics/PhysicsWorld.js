@@ -309,6 +309,51 @@ export class PhysicsWorld {
     }
   }
 
+  createDynamicProp(mesh, shape = 'box', dimensions = {}, mass = 25.0) {
+    return this.addDynamicProp(mesh, shape, dimensions, mass);
+  }
+
+  /**
+   * Apply radial explosive impulse to dynamic props near epicenter
+   * @param {THREE.Vector3} epicenter 
+   * @param {number} radius 
+   * @param {number} maxForce 
+   */
+  applyExplosionImpulse(epicenter, radius = 8.0, maxForce = 250.0) {
+    if (!this.isReady) return;
+
+    for (let i = 0; i < this.dynamicProps.length; i++) {
+      const prop = this.dynamicProps[i];
+      if (!prop.body) continue;
+
+      const t = prop.body.translation();
+      const dx = t.x - epicenter.x;
+      const dy = t.y - epicenter.y;
+      const dz = t.z - epicenter.z;
+      const dist = Math.hypot(dx, dy, dz);
+
+      if (dist < radius && dist > 0.05) {
+        const falloff = 1.0 - (dist / radius);
+        const force = maxForce * falloff;
+        const normX = dx / dist;
+        const normY = Math.max(0.35, dy / dist + 0.35); // upward blast lift
+        const normZ = dz / dist;
+
+        const impulse = {
+          x: normX * force,
+          y: normY * force,
+          z: normZ * force
+        };
+        prop.body.applyImpulse(impulse, true);
+        prop.body.applyTorqueImpulse({
+          x: (Math.random() - 0.5) * force * 0.4,
+          y: (Math.random() - 0.5) * force * 0.4,
+          z: (Math.random() - 0.5) * force * 0.4
+        }, true);
+      }
+    }
+  }
+
   /**
    * Clear all map colliders and dynamic props (called when switching maps)
    */

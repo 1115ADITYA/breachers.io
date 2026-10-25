@@ -98,6 +98,24 @@ public class PlayerSession {
         return state;
     }
 
+    public double getX() {
+        return state != null ? state.x() : 0.0;
+    }
+
+    public double getY() {
+        return state != null ? state.y() : 0.0;
+    }
+
+    public double getZ() {
+        return state != null ? state.z() : 0.0;
+    }
+
+    public void addReserveAmmo(WeaponType weapon, int amount) {
+        if (weapon == null || amount <= 0) return;
+        int current = ammoReserves.getOrDefault(weapon, 0);
+        ammoReserves.put(weapon, Math.min(weapon.getMaxReserve(), current + amount));
+    }
+
     public void updateState(PlayerState newState) {
         this.state = newState;
     }

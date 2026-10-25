@@ -78,6 +78,7 @@ export class Weapon {
 
     // Practice targets
     this.targets = [];
+    this.explosiveBarrels = [];
 
     // Viewmodel positioning & animation
     this.basePos = new THREE.Vector3(0.32, -0.32, -0.55);
@@ -115,6 +116,19 @@ export class Weapon {
 
   setTargets(targets) {
     this.targets = targets;
+  }
+
+  setExplosiveBarrels(barrels) {
+    this.explosiveBarrels = barrels || [];
+  }
+
+  addAmmo(weaponType, amount) {
+    const type = weaponType || this.currentType;
+    if (this.ammo[type]) {
+      const maxRes = WEAPONS[type]?.maxReserve || 90;
+      this.ammo[type].reserve = Math.min(maxRes, this.ammo[type].reserve + amount);
+      this.updateHUD();
+    }
   }
 
   initAudio() {
@@ -415,7 +429,21 @@ export class Weapon {
     this.camera.getWorldPosition(ray.origin);
     this.camera.getWorldDirection(ray.direction);
 
-    // 1. Practice Mode Check: Raycast against local practice dummies
+    // 1. Raycast against explosive barrels
+    let hitBarrel = null;
+    let barrelMinDist = stats.range;
+    let barrelHitPoint = null;
+
+    for (const barrel of this.explosiveBarrels) {
+      const res = barrel.checkHit(ray, stats.range);
+      if (res && res.distance < barrelMinDist) {
+        barrelMinDist = res.distance;
+        hitBarrel = barrel;
+        barrelHitPoint = res.point;
+      }
+    }
+
+    // 2. Practice Mode Check: Raycast against local practice dummies
     let hitDummy = null;
     let dummyMinDist = stats.range;
     let dummyHitResult = null;
@@ -432,7 +460,23 @@ export class Weapon {
       }
     }
 
-    if (dummyHitResult) {
+    // 3. World geometry hit
+    const worldHit = this.collisionSystem.raycast(ray, stats.range);
+    const worldDist = worldHit ? ray.origin.distanceTo(worldHit.point) : Infinity;
+
+    if (hitBarrel && barrelMinDist < worldDist && (!dummyHitResult || barrelMinDist < dummyMinDist)) {
+      // Direct hit on explosive barrel!
+      this.hud.showHitmarker(false);
+      this.spawnImpactSparks(barrelHitPoint, new THREE.Vector3(0, 1, 0), 0xff8800);
+      if (!stats.isMelee) {
+        this.spawnTracer(barrelHitPoint);
+      }
+      if (this.network && this.network.isConnected) {
+        this.network.shootBarrel(hitBarrel.barrelId, this.currentType, barrelHitPoint);
+      } else {
+        hitBarrel.ignite();
+      }
+    } else if (dummyHitResult && dummyMinDist < worldDist) {
       // Local dummy hit
       this.hud.showHitmarker(dummyHitResult.isHeadshot);
       this.playHitmarkerSound(dummyHitResult.isHeadshot);
@@ -446,24 +490,19 @@ export class Weapon {
       if (!stats.isMelee) {
         this.spawnTracer(dummyHitResult.point);
       }
-    } else {
-      // World geometry hit for local visual feedback
-      const worldHit = this.collisionSystem.raycast(ray, stats.range);
-      if (worldHit) {
-        this.spawnImpactSparks(worldHit.point, worldHit.normal, 0xffaa00);
-        if (!stats.isMelee) {
-          this.spawnTracer(worldHit.point);
-        }
-      } else if (!stats.isMelee) {
-        const farPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(stats.range));
-        this.spawnTracer(farPoint);
+    } else if (worldHit) {
+      this.spawnImpactSparks(worldHit.point, worldHit.normal, 0xffaa00);
+      if (!stats.isMelee) {
+        this.spawnTracer(worldHit.point);
       }
 
       // Apply physical bullet impulse to dynamic props (crates, barrels)
       if (this.physicsWorld && this.physicsWorld.isReady) {
-        const hitPoint = worldHit ? worldHit.point : ray.origin.clone().addScaledVector(ray.direction, Math.min(stats.range, 30));
-        this.physicsWorld.applyBulletImpulse(hitPoint, ray.direction, stats.damage * 1.2);
+        this.physicsWorld.applyBulletImpulse(worldHit.point, ray.direction, stats.damage * 1.2);
       }
+    } else if (!stats.isMelee) {
+      const farPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(stats.range));
+      this.spawnTracer(farPoint);
     }
 
     // 2. Server-Authoritative Combat: Submit shot to Spring Boot backend

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { ExplosiveBarrel } from '../entities/ExplosiveBarrel.js';
+import { BounceTyre } from '../entities/BounceTyre.js';
 
 /**
  * WarehouseMap
@@ -15,6 +17,8 @@ export class WarehouseMap {
     this.subtitle = 'Reforge Logistics Depot';
     this.group = new THREE.Group();
     this.colliders = []; // Array of { box: THREE.Box3, type: string, mesh: THREE.Object3D }
+    this.explosiveBarrels = [];
+    this.bounceTyres = [];
     this.isLoaded = false;
     this.loadError = null;
 
@@ -282,6 +286,36 @@ export class WarehouseMap {
         }
       });
     }
+
+    // 4. Interactive Explosive Barrels (Backend synchronized)
+    this.explosiveBarrels = [];
+    const addExplosive = (barrelId, x, z) => {
+      const barrel = new ExplosiveBarrel(barrelId, x, 0, z, physicsWorld);
+      this.group.add(barrel.group);
+      this.colliders.push({ box: barrel.colliderBox, type: 'barrel', mesh: barrel.group });
+      this.explosiveBarrels.push(barrel);
+    };
+
+    addExplosive('barrel_wh_1', -5.0, 8.0);
+    addExplosive('barrel_wh_2', 5.0, -8.0);
+    addExplosive('barrel_wh_3', -15.0, 12.0);
+    addExplosive('barrel_wh_4', 15.0, -12.0);
+    addExplosive('barrel_wh_5', 0.0, 16.0);
+    addExplosive('barrel_wh_6', 0.0, -16.0);
+    addExplosive('barrel_wh_7', -10.0, -6.0);
+    addExplosive('barrel_wh_8', 10.0, 6.0);
+
+    // 5. Interactive Bounceable Tyres
+    this.bounceTyres = [];
+    const addBounceTyre = (tyreId, x, z, count = 3) => {
+      const tyre = new BounceTyre(tyreId, x, 0, z, count);
+      this.group.add(tyre.group);
+      this.colliders.push({ box: tyre.colliderBox, type: 'tires', mesh: tyre.group });
+      this.bounceTyres.push(tyre);
+    };
+
+    addBounceTyre('tyre_wh_1', -12.0, -10.0, 3);
+    addBounceTyre('tyre_wh_2', 12.0, 10.0, 3);
   }
 
   /**
@@ -318,6 +352,14 @@ export class WarehouseMap {
     };
   }
 
+  getExplosiveBarrels() {
+    return this.explosiveBarrels;
+  }
+
+  getBounceTyres() {
+    return this.bounceTyres;
+  }
+
   dispose() {
     // Remove and dispose lights
     while (this.lightsGroup.children.length > 0) {
@@ -341,6 +383,8 @@ export class WarehouseMap {
     });
 
     this.colliders = [];
+    this.explosiveBarrels = [];
+    this.bounceTyres = [];
     if (this.physicsWorld && this.physicsWorld.isReady) {
       this.physicsWorld.clearMapColliders();
     }

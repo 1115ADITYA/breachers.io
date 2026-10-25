@@ -512,7 +512,110 @@ To demonstrate traditional Java Enterprise Servlet programming integrated alongs
 
 #### Deployment Scope
 - **Local Demonstration**: Embedded H2 database and Rapier WebAssembly client run locally with zero external database dependencies.
-- **Production Persistence**: The Spring JDBC abstraction allows switching from H2 to PostgreSQL or MySQL simply by updating `spring.datasource.url` in `application.yml` with no code changes.
+---
+
+## Chunk 8 — Explosive Environment, Loot Drops, Kill Feed & Signature Gameplay
+
+Breachers.io Chunk 8 introduces dynamic environmental hazards, physical boost mechanics, tactical ammo drops, and competitive scoreboard & kill feed systems.
+
+### 1. Interactive Explosive Barrels 💥
+- **Visual Design**: Amber yellow barrels featuring rolled dark steel chimes, glowing hazard bands, warning symbols, and a pulsing LED beacon strobe.
+- **Ignition & Fuse**: On bullet or knife impact, the barrel begins a 0.6s fuse countdown with rapid red/amber strobe flashing and a procedural Web Audio fuse sizzle.
+- **Detonation & VFX**:
+  - Expanding core and outer fireballs, expanding shockwave ring, procedural smoke plume.
+  - Sub-bass explosion audio with distance falloff attenuation.
+  - Procedural camera shake on nearby players (< 35m) scaled by proximity.
+  - Rapier physics radial impulse pushing surrounding dynamic rigid bodies.
+- **Server-Authoritative Radial Damage**:
+  - Authoritatively validated by the Spring Boot backend (`GameSessionManager.detonateBarrel`).
+  - Maximum damage: 110 HP at epicenter, linear distance falloff within 8.0m radius.
+  - Spawn protection (5s) and TDM friendly-fire immunity strictly enforced.
+  - Single-detonation guarantee via `AtomicBoolean` — cannot be detonated repeatedly.
+  - **Chain Reactions**: Detonating barrels ignite adjacent unexploded barrels within explosion radius with a staggered delay (0.25s).
+  - **Breach Bonus**: Eliminating an opponent with an explosive barrel awards a `BREACH BONUS (+100 PTS)` notification!
+
+### 2. Bounceable Tyres & Fun Physics
+- **Design & Placement**: Heavy vehicle rubber tyre stacks with amber/cyan grip stripes located in tactical corners of Container Yard and Warehouse.
+- **Physics Boost**: Stepping or jumping onto a designated tyre stack launches the player upward with a controlled vertical velocity (`15.0 m/s`, launching the player ~3.5–4.0m into the air).
+- **Feedback**:
+  - Squash & spring elastic rebound animation on the tyre stack.
+  - Radial puff ring dust particles at the rim.
+  - Resonant spring boing audio synthesis.
+  - HUD notification: `BOUNCE BOOST!`.
+  - Built-in 350ms cooldown prevents infinite bounce oscillations or ceiling clipping.
+
+### 3. Ammo Loot Drops on Player Elimination
+- **Spawn on Death**: When a player is eliminated, an ammo crate is dropped at their death coordinates containing ammunition for their equipped weapon.
+- **3D Asset & Visuals**: Slate military crate with glowing tactical cyan latch, floating and rotating ammo magazine icon, and a vertical light shaft beacon.
+- **Proximity Detection & HUD Prompts**:
+  - Within 8m: Small alert banner `AMMO DROPPED NEARBY` (fades automatically after 2s).
+  - Within 2.5m: Interaction prompt `[E] PICK UP AMMO (+[amount] [type])`.
+  - On collection: `AMMO COLLECTED +[amount]` toast and immediate HUD reserve ammo update.
+- **Authoritative & Atomic Pickup**:
+  - Client sends `PICKUP_LOOT` with `lootId`.
+  - Server atomically verifies distance (`<= 3.5m`), availability (`AtomicBoolean`), and player ammo capacity.
+  - Prevents race conditions — exactly one player can collect a given drop.
+  - Uncollected loot drops automatically expire after 30 seconds (`cleanExpiredLoot`).
+
+### 4. Live Kill Feed & In-Game Scoreboard
+- **Top-Right Live Kill Feed**:
+  - Real-time notifications: `[PlayerA] 🔫 AR ➔ [PlayerB]` or `[PlayerA] 💥 BARREL [BREACH BONUS] ➔ [PlayerB]`.
+  - Automatically fades out after 5 seconds. Maximum 5 simultaneous visible entries.
+- **In-Game Tactical Scoreboard (`Tab` Key)**:
+  - Hold `Tab` to display real-time connected player list.
+  - Displays Username, Team, Kills, Deaths, and K/D Ratio.
+  - TDM mode shows Red vs Blue team scores; FFA mode shows individual standings.
+  - Excludes practice dummies — only server-confirmed real connected sessions are listed.
+
+### 5. Demo Characters Lifecycle
+- Practice dummies (`DummyTarget`) are used solely for local single-player training.
+- When two or more real players connect to a room (`onlinePlayerCount >= 2`), practice dummies are immediately hidden and excluded from weapon target collision lists.
+- If player count drops to 1, practice dummies are safely restored for practice.
+- Dummies never appear in scoreboards, match summaries, or kill feeds.
+
+---
+
+### Controls Quick Reference
+
+| Key | Action |
+| --- | --- |
+| `W`, `A`, `S`, `D` | Tactical Movement |
+| `Shift` (Hold) | Sprint |
+| `Space` | Jump |
+| `Mouse 1` (Left Click) | Shoot / Attack / Acquire Pointer Lock |
+| `1` | Select Assault Rifle (`BREACHER-V1`) |
+| `2` | Select Pistol (`TAC-9`) |
+| `3` | Select Tactical Knife |
+| `R` | Reload Weapon |
+| `E` | Pick Up Ammo Loot Crate |
+| `Tab` (Hold) | View In-Game Scoreboard |
+| `F3` | Toggle Rapier 3D Physics Debugger |
+| `Esc` | Pause / Release Pointer Lock |
+
+---
+
+### Testing & Verification
+
+1. **Backend Tests (Maven + JUnit 5)**:
+   ```powershell
+   $env:JAVA_HOME = "C:\Program Files\Java\jdk-26.0.2"
+   .\mvnw.cmd test
+   ```
+   - **Result**: **37 / 37 passed** (0 failures, 0 errors).
+   - Validates barrel detonation, friendly fire rules, spawn protection immunity, chain reactions, atomic single-collector loot pickup, ammo reserve caps, dummy exclusion, JDBC persistence, and Servlet reports.
+
+2. **Frontend Production Build (Vite)**:
+   ```bash
+   cd frontend
+   npm run build
+   ```
+   - **Result**: Built successfully with zero errors.
+
+3. **Multiplayer Two-Client E2E Test**:
+   ```bash
+   node scratch/test-chunk8-e2e.mjs
+   ```
+   - **Result**: Verified two concurrent live WebSocket clients, room formation, match start, barrel ignition/detonation broadcast, duplicate prevention, elimination loot drop, and atomic single-collector pickup.
 
 
 

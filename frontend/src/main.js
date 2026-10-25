@@ -13,6 +13,7 @@ import { MenuPreviewScene } from './menu/MenuPreviewScene.js';
 import { MenuController } from './ui/MenuController.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { PhysicsDebugger } from './physics/PhysicsDebugger.js';
+import { LootManager } from './entities/LootManager.js';
 
 // -------------------------------------------------------------
 // 1. Scene & Renderer Initialization
@@ -136,8 +137,15 @@ function setupTargets(mapId) {
   }
 
   targets.forEach(t => targetsGroup.add(t.group));
+  updateDemoCharacters();
+}
+
+function updateDemoCharacters() {
+  const realCount = gameNetwork.onlinePlayerCount || 1;
+  const hasMultipleRealPlayers = realCount >= 2;
+  targetsGroup.visible = !hasMultipleRealPlayers;
   if (weapon) {
-    weapon.setTargets(targets);
+    weapon.setTargets(hasMultipleRealPlayers ? [] : targets);
   }
 }
 
@@ -178,12 +186,30 @@ async function loadMap(mapId, onProgress = null) {
     if (onProgress) onProgress(100);
   }
 
+  if (lootManager) {
+    lootManager.clear();
+  }
+
   scene.add(currentMap.getMesh());
   collisionSystem.setColliders(currentMap.getColliders());
   setupTargets(mapId);
 
+  const barrels = currentMap.getExplosiveBarrels ? currentMap.getExplosiveBarrels() : [];
+  const tyres = currentMap.getBounceTyres ? currentMap.getBounceTyres() : [];
+  if (player) {
+    player.setExplosiveBarrels(barrels);
+    player.setBounceTyres(tyres);
+    player.setLootManager(lootManager);
+    player.setNetwork(gameNetwork);
+  }
+  if (weapon) {
+    weapon.setExplosiveBarrels(barrels);
+  }
+
   const arenaTitle = `${currentMap.name.toUpperCase()} — ${currentMap.subtitle ? currentMap.subtitle.toUpperCase() : 'SECTOR 04'}`;
-  hud.setArenaName(arenaTitle);
+  if (hud && hud.setArenaName) {
+    hud.setArenaName(arenaTitle);
+  }
   console.log(`[MapLoader] Switched active map to: ${currentMap.name} (${currentMap.getColliders().length} colliders registered)`);
 }
 
@@ -236,6 +262,17 @@ const hud = new HUD({
 
 // Initially hide in-game HUD until player enters match
 hud.hide();
+
+const lootManager = new LootManager(scene, hud);
+
+let shakeIntensity = 0;
+let shakeDuration = 0;
+let shakeElapsed = 0;
+function triggerCameraShake(intensity = 1.0, duration = 0.45) {
+  shakeIntensity = intensity;
+  shakeDuration = duration;
+  shakeElapsed = 0;
+}
 
 // -------------------------------------------------------------
 const menuController = new MenuController({
@@ -295,6 +332,8 @@ function applySettings(settings) {
 // 7. Local Player Controller & Weapon
 // -------------------------------------------------------------
 player = new PlayerController(camera, renderer.domElement, collisionSystem, hud, physicsWorld);
+player.setLootManager(lootManager);
+player.setNetwork(gameNetwork);
 
 // Weapons setup
 weapon = new Weapon(camera, scene, collisionSystem, hud, gameNetwork);
@@ -400,11 +439,13 @@ gameNetwork.onWelcome = (welcomeMsg) => {
       remotePlayerManager.addPlayer(p);
     });
   }
+  updateDemoCharacters();
 };
 
 gameNetwork.onPlayerJoined = (playerData) => {
   console.log(`[Multiplayer] Player joined: ${playerData.username} (${playerData.id})`);
   remotePlayerManager.addPlayer(playerData);
+  updateDemoCharacters();
 };
 
 gameNetwork.onPlayerMoved = (moveData) => {
@@ -414,6 +455,7 @@ gameNetwork.onPlayerMoved = (moveData) => {
 gameNetwork.onPlayerLeft = (leftData) => {
   console.log(`[Multiplayer] Player left: ${leftData.id}`);
   remotePlayerManager.removePlayer(leftData.id);
+  updateDemoCharacters();
 };
 
 gameNetwork.onError = (errMsg) => {
@@ -483,13 +525,16 @@ gameNetwork.onPlayerRespawned = (data) => {
 };
 
 gameNetwork.onKillFeed = (data) => {
-  hud.addKillFeedEntry(data.killerName, data.victimName, data.weapon);
+  hud.addKillFeedEntry(data.killerName || data.attackerName, data.victimName, data.weapon, data.isBreachBonus);
 };
 
 // Private Rooms, TDM/FFA Matches & Spawn Protection
 gameNetwork.onRoomState = (roomState) => {
   menuController.updateRoomState(roomState, gameNetwork.playerId);
   hud.updateRoomState(roomState, gameNetwork.playerId);
+  hud.updateScoreboard(roomState);
+  updateDemoCharacters();
+
   if (roomState.players) {
     roomState.players.forEach((p) => {
       if (p.id !== gameNetwork.playerId) {
@@ -527,6 +572,7 @@ gameNetwork.onMatchStarted = async (data) => {
 
 gameNetwork.onScoreUpdate = (data) => {
   hud.updateScore(data.redScore, data.blueScore, data.kills, data.deaths);
+  hud.updateScoreboard(data);
 };
 
 gameNetwork.onMatchEnded = (data) => {
@@ -545,6 +591,43 @@ gameNetwork.onSpawnProtection = (data) => {
   } else {
     remotePlayerManager.setSpawnProtection(data.playerId, data.durationMs || 5000, data.active);
   }
+};
+
+// Chunk 8: Explosive Barrels, Loot Drops & Signature Feedback
+gameNetwork.onBarrelIgnited = (msg) => {
+  const barrels = currentMap?.getExplosiveBarrels ? currentMap.getExplosiveBarrels() : [];
+  const barrel = barrels.find(b => b.barrelId === msg.barrelId);
+  if (barrel) {
+    barrel.ignite(msg.fuseDurationSec);
+  }
+};
+
+gameNetwork.onBarrelExploded = (msg) => {
+  const barrels = currentMap?.getExplosiveBarrels ? currentMap.getExplosiveBarrels() : [];
+  const barrel = barrels.find(b => b.barrelId === msg.barrelId);
+  if (barrel) {
+    barrel.explode(scene, camera.position, triggerCameraShake);
+  }
+};
+
+gameNetwork.onLootSpawned = (msg) => {
+  lootManager.spawnLoot(msg.lootId, msg.x, msg.y, msg.z, msg.ammoType, msg.amount);
+};
+
+gameNetwork.onLootCollected = (msg) => {
+  const isLocal = msg.collectorId === gameNetwork.localPlayerId;
+  lootManager.collectLoot(msg.lootId, isLocal);
+  if (isLocal && weapon) {
+    weapon.addAmmo(msg.ammoType, msg.amount);
+  }
+};
+
+gameNetwork.onLootExpired = (msg) => {
+  lootManager.expireLoot(msg.lootId);
+};
+
+gameNetwork.onBreachBonus = (msg) => {
+  hud.showBreachBonus(msg.bonusPoints || 100);
 };
 
 // -------------------------------------------------------------
@@ -606,10 +689,27 @@ function animate() {
   // 3. Update Remote Peer Models & Interpolation
   remotePlayerManager.update(delta);
 
-  // 4. Update Target Dummies
-  targets.forEach(t => t.update(delta, camera.position));
+  // 4. Update Target Dummies (Only if visible / practice mode)
+  if (targetsGroup.visible) {
+    targets.forEach(t => t.update(delta, camera.position));
+  }
 
-  // 5. Render Scene
+  // 5. Update Chunk 8 Loot & Explosive Barrels
+  if (player) {
+    lootManager.update(delta, clock.getElapsedTime(), player.position);
+  }
+  const activeBarrels = currentMap?.getExplosiveBarrels ? currentMap.getExplosiveBarrels() : [];
+  activeBarrels.forEach(b => b.update(delta));
+
+  // 6. Camera Shake Animation
+  if (shakeElapsed < shakeDuration) {
+    shakeElapsed += delta;
+    const factor = Math.max(0, 1.0 - (shakeElapsed / shakeDuration));
+    camera.position.x += (Math.random() - 0.5) * shakeIntensity * factor * 0.16;
+    camera.position.y += (Math.random() - 0.5) * shakeIntensity * factor * 0.16;
+  }
+
+  // 7. Render Scene
   renderer.render(scene, camera);
 
   // 6. Update FPS Counter

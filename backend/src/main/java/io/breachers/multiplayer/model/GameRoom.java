@@ -58,6 +58,11 @@ public class GameRoom {
     private final AtomicInteger spawnCounter = new AtomicInteger(0);
     private ScheduledFuture<?> matchTimerFuture;
 
+    // --- Chunk 8: Explosive Barrels & Loot Drops ---
+    private volatile String currentMapId = "container_yard";
+    private final Map<String, ExplosiveBarrel> barrels = new ConcurrentHashMap<>();
+    private final Map<String, LootDrop> lootDrops = new ConcurrentHashMap<>();
+
     public GameRoom(String roomCode, String hostPlayerId, GameMode mode) {
         this.roomCode = roomCode;
         this.hostPlayerId = hostPlayerId;
@@ -65,6 +70,7 @@ public class GameRoom {
         this.killLimit = this.mode.getDefaultKillLimit();
         this.matchDurationSec = this.mode.getDefaultDurationSeconds();
         this.timeRemainingSec = this.matchDurationSec;
+        initBarrels(this.currentMapId);
     }
 
     public String getRoomCode() {
@@ -400,5 +406,98 @@ public class GameRoom {
         }
         results.sort((a, b) -> Integer.compare(b.score(), a.score()));
         return results;
+    }
+
+    // --- Chunk 8 Methods: Explosive Barrels & Loot Drops ---
+
+    public String getCurrentMapId() {
+        return currentMapId;
+    }
+
+    public synchronized void setCurrentMapId(String mapId) {
+        if (mapId != null && !mapId.equals(this.currentMapId)) {
+            this.currentMapId = mapId;
+            initBarrels(mapId);
+            clearLoot();
+        }
+    }
+
+    public synchronized void initBarrels(String mapId) {
+        barrels.clear();
+        if ("warehouse".equalsIgnoreCase(mapId)) {
+            addBarrel(new ExplosiveBarrel("barrel_wh_1", -5.0, 0.55, 8.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_2", 5.0, 0.55, -8.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_3", -15.0, 0.55, 12.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_4", 15.0, 0.55, -12.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_5", 0.0, 0.55, 16.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_6", 0.0, 0.55, -16.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_7", -10.0, 0.55, -6.0));
+            addBarrel(new ExplosiveBarrel("barrel_wh_8", 10.0, 0.55, 6.0));
+        } else {
+            // Container Yard default barrels
+            addBarrel(new ExplosiveBarrel("barrel_cy_1", -14.7, 0.55, 3.4));
+            addBarrel(new ExplosiveBarrel("barrel_cy_2", 14.7, 0.55, -3.4));
+            addBarrel(new ExplosiveBarrel("barrel_cy_3", 28.0, 0.55, -22.0));
+            addBarrel(new ExplosiveBarrel("barrel_cy_4", 0.0, 0.55, 24.0));
+            addBarrel(new ExplosiveBarrel("barrel_cy_5", -14.0, 0.55, 3.0));
+            addBarrel(new ExplosiveBarrel("barrel_cy_6", 14.0, 0.55, -3.0));
+            addBarrel(new ExplosiveBarrel("barrel_cy_7", -28.0, 0.55, 22.0));
+            addBarrel(new ExplosiveBarrel("barrel_cy_8", 0.0, 0.55, -24.0));
+        }
+    }
+
+    private void addBarrel(ExplosiveBarrel barrel) {
+        barrels.put(barrel.getBarrelId(), barrel);
+    }
+
+    public ExplosiveBarrel getBarrel(String barrelId) {
+        return barrels.get(barrelId);
+    }
+
+    public Collection<ExplosiveBarrel> getAllBarrels() {
+        return Collections.unmodifiableCollection(barrels.values());
+    }
+
+    public synchronized void resetBarrels() {
+        for (ExplosiveBarrel b : barrels.values()) {
+            b.reset();
+        }
+    }
+
+    public LootDrop spawnLoot(double x, double y, double z, String ammoType, int amount) {
+        String lootId = "loot_" + UUID.randomUUID().toString().substring(0, 8);
+        LootDrop drop = new LootDrop(lootId, x, y, z, ammoType, amount);
+        lootDrops.put(lootId, drop);
+        return drop;
+    }
+
+    public LootDrop collectLoot(String lootId, PlayerSession player) {
+        LootDrop drop = lootDrops.get(lootId);
+        if (drop != null && drop.tryCollect(player)) {
+            lootDrops.remove(lootId);
+            return drop;
+        }
+        return null;
+    }
+
+    public List<LootDrop> cleanExpiredLoot() {
+        long now = System.currentTimeMillis();
+        List<LootDrop> expired = new ArrayList<>();
+        for (Iterator<Map.Entry<String, LootDrop>> it = lootDrops.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, LootDrop> entry = it.next();
+            if (entry.getValue().isExpired(now)) {
+                expired.add(entry.getValue());
+                it.remove();
+            }
+        }
+        return expired;
+    }
+
+    public void clearLoot() {
+        lootDrops.clear();
+    }
+
+    public int getRealPlayerCount() {
+        return players.size();
     }
 }

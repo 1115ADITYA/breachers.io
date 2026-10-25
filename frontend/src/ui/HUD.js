@@ -98,6 +98,65 @@ export class HUD {
       <!-- Kill Feed (Top Right beneath header) -->
       <div id="kill-feed-container" class="kill-feed-container"></div>
 
+      <!-- Interactive Crosshair Hover & Pickup Prompt -->
+      <div id="interaction-prompt-container" class="interaction-prompt hidden">
+        <span id="interaction-prompt-text" class="prompt-text">[E] PICK UP AMMO</span>
+      </div>
+
+      <!-- Gameplay Toasts -->
+      <div id="ammo-alert-toast" class="gameplay-toast alert hidden">
+        <span class="toast-icon">📦</span>
+        <span class="toast-text">AMMO DROPPED NEARBY</span>
+      </div>
+
+      <div id="ammo-collected-toast" class="gameplay-toast collected hidden">
+        <span class="toast-icon">⚡</span>
+        <span id="ammo-collected-text" class="toast-text">AMMO COLLECTED +30</span>
+      </div>
+
+      <div id="bounce-boost-toast" class="gameplay-toast bounce hidden">
+        <span class="toast-icon">🚀</span>
+        <span class="toast-text">BOUNCE BOOST!</span>
+      </div>
+
+      <div id="breach-bonus-toast" class="gameplay-toast breach hidden">
+        <span class="toast-icon">💥</span>
+        <div class="toast-content">
+          <span class="toast-title">BREACH BONUS!</span>
+          <span class="toast-sub">+100 PTS • BARREL DETONATION</span>
+        </div>
+      </div>
+
+      <!-- Live Tab Scoreboard Overlay -->
+      <div id="tab-scoreboard-overlay" class="tab-scoreboard-overlay hidden">
+        <div class="tab-scoreboard-card">
+          <div class="tab-scoreboard-header">
+            <div class="tab-title">OPERATIONAL SCOREBOARD</div>
+            <div class="tab-meta">
+              <span id="tab-room-code">ROOM: PUBLIC</span> •
+              <span id="tab-mode">TDM</span> •
+              <span id="tab-time-left">10:00</span>
+            </div>
+          </div>
+          <div id="tab-scores-row" class="tab-scores-row">
+            <div class="tab-team-score red">RED TEAM: <span id="tab-red-score">0</span></div>
+            <div class="tab-team-score blue">BLUE TEAM: <span id="tab-blue-score">0</span></div>
+          </div>
+          <table class="tab-score-table">
+            <thead>
+              <tr>
+                <th>OPERATOR</th>
+                <th>TEAM</th>
+                <th>KILLS</th>
+                <th>DEATHS</th>
+                <th>K/D</th>
+              </tr>
+            </thead>
+            <tbody id="tab-score-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- 5-Second Spawn Shield Notification Banner (Mandatory Requirement B) -->
       <div id="spawn-shield-banner" class="spawn-shield-banner hidden">
         <div class="shield-icon">🛡️</div>
@@ -376,6 +435,24 @@ export class HUD {
     this.btnStartMatch = document.getElementById('btn-start-match');
     this.btnLeaveRoom = document.getElementById('btn-leave-room');
     this.lobbyWaitText = document.getElementById('lobby-wait-text');
+
+    // Chunk 8 Elements
+    this.killFeedContainer = document.getElementById('kill-feed-container');
+    this.interactionPromptContainer = document.getElementById('interaction-prompt-container');
+    this.interactionPromptText = document.getElementById('interaction-prompt-text');
+    this.ammoAlertToast = document.getElementById('ammo-alert-toast');
+    this.ammoCollectedToast = document.getElementById('ammo-collected-toast');
+    this.ammoCollectedText = document.getElementById('ammo-collected-text');
+    this.bounceBoostToast = document.getElementById('bounce-boost-toast');
+    this.breachBonusToast = document.getElementById('breach-bonus-toast');
+    this.tabScoreboardOverlay = document.getElementById('tab-scoreboard-overlay');
+    this.tabRoomCode = document.getElementById('tab-room-code');
+    this.tabMode = document.getElementById('tab-mode');
+    this.tabTimeLeft = document.getElementById('tab-time-left');
+    this.tabScoresRow = document.getElementById('tab-scores-row');
+    this.tabRedScore = document.getElementById('tab-red-score');
+    this.tabBlueScore = document.getElementById('tab-blue-score');
+    this.tabScoreTbody = document.getElementById('tab-score-tbody');
 
     this.initEventListeners();
   }
@@ -832,6 +909,175 @@ export class HUD {
   hide() {
     if (this.container) {
       this.container.classList.add('hidden');
+    }
+  }
+
+  // ==========================================
+  // Chunk 8 Methods: Kill Feed, Prompts & Scoreboard
+  // ==========================================
+
+  /**
+   * Add entry to live Kill Feed (Top-Right)
+   */
+  addKillFeedEntry(killerName, victimName, weapon = 'ASSAULT', isBreachBonus = false, killerTeam = 'NONE', victimTeam = 'NONE') {
+    if (!this.killFeedContainer) return;
+
+    const item = document.createElement('div');
+    item.className = 'kill-feed-item' + (isBreachBonus ? ' barrel-breach' : '');
+
+    const killerSpan = document.createElement('span');
+    killerSpan.className = 'kill-feed-killer' + (killerTeam === 'RED' ? ' team-red' : killerTeam === 'BLUE' ? ' team-blue' : '');
+    killerSpan.textContent = killerName || 'Unknown';
+
+    const weaponBadge = document.createElement('span');
+    weaponBadge.className = 'kill-feed-weapon';
+    if (weapon === 'BARREL') {
+      weaponBadge.innerHTML = '💥 BARREL';
+    } else if (weapon === 'PISTOL') {
+      weaponBadge.innerHTML = '🔫 TAC-9';
+    } else if (weapon === 'KNIFE') {
+      weaponBadge.innerHTML = '🗡️ KNIFE';
+    } else {
+      weaponBadge.innerHTML = '🔫 AR';
+    }
+
+    const arrow = document.createElement('span');
+    arrow.style.color = '#64748b';
+    arrow.textContent = '➔';
+
+    const victimSpan = document.createElement('span');
+    victimSpan.className = 'kill-feed-victim' + (victimTeam === 'RED' ? ' team-red' : victimTeam === 'BLUE' ? ' team-blue' : '');
+    victimSpan.textContent = victimName || 'Enemy';
+
+    item.appendChild(killerSpan);
+    item.appendChild(weaponBadge);
+
+    if (isBreachBonus) {
+      const breachBadge = document.createElement('span');
+      breachBadge.className = 'breach-badge';
+      breachBadge.textContent = 'BREACH BONUS';
+      item.appendChild(breachBadge);
+    }
+
+    item.appendChild(arrow);
+    item.appendChild(victimSpan);
+
+    this.killFeedContainer.appendChild(item);
+
+    // Keep up to 5 entries max
+    while (this.killFeedContainer.children.length > 5) {
+      this.killFeedContainer.removeChild(this.killFeedContainer.children[0]);
+    }
+
+    // Auto-remove after 5s with smooth transition
+    setTimeout(() => {
+      item.style.opacity = '0';
+      item.style.transform = 'translateX(40px)';
+      setTimeout(() => {
+        if (item.parentNode) {
+          item.parentNode.removeChild(item);
+        }
+      }, 400);
+    }, 5000);
+  }
+
+  showNearbyAmmoAlert() {
+    if (!this.ammoAlertToast) return;
+    this.ammoAlertToast.classList.remove('hidden');
+    clearTimeout(this.ammoAlertTimeout);
+    this.ammoAlertTimeout = setTimeout(() => {
+      this.ammoAlertToast.classList.add('hidden');
+    }, 2000);
+  }
+
+  showAmmoCollected(amount, type = 'ASSAULT') {
+    if (!this.ammoCollectedToast) return;
+    if (this.ammoCollectedText) {
+      this.ammoCollectedText.textContent = `AMMO COLLECTED +${amount} (${type})`;
+    }
+    this.ammoCollectedToast.classList.remove('hidden');
+    clearTimeout(this.ammoCollectedTimeout);
+    this.ammoCollectedTimeout = setTimeout(() => {
+      this.ammoCollectedToast.classList.add('hidden');
+    }, 2200);
+  }
+
+  showBounceBoost() {
+    if (!this.bounceBoostToast) return;
+    this.bounceBoostToast.classList.remove('hidden');
+    clearTimeout(this.bounceBoostTimeout);
+    this.bounceBoostTimeout = setTimeout(() => {
+      this.bounceBoostToast.classList.add('hidden');
+    }, 1800);
+  }
+
+  showBreachBonus(killerName) {
+    if (!this.breachBonusToast) return;
+    this.breachBonusToast.classList.remove('hidden');
+    clearTimeout(this.breachBonusTimeout);
+    this.breachBonusTimeout = setTimeout(() => {
+      this.breachBonusToast.classList.add('hidden');
+    }, 2800);
+  }
+
+  showInteractionPrompt(text, type = 'ammo') {
+    if (!this.interactionPromptContainer || !this.interactionPromptText) return;
+    this.interactionPromptText.textContent = text;
+    this.interactionPromptContainer.className = 'interaction-prompt ' + type;
+  }
+
+  hideInteractionPrompt() {
+    if (!this.interactionPromptContainer) return;
+    this.interactionPromptContainer.className = 'interaction-prompt hidden';
+  }
+
+  toggleScoreboard(forceState = null) {
+    if (!this.tabScoreboardOverlay) return;
+    const isVisible = !this.tabScoreboardOverlay.classList.contains('hidden');
+    const newState = forceState !== null ? forceState : !isVisible;
+    if (newState) {
+      this.tabScoreboardOverlay.classList.remove('hidden');
+    } else {
+      this.tabScoreboardOverlay.classList.add('hidden');
+    }
+  }
+
+  updateScoreboard(roomState) {
+    if (!roomState) return;
+    this.currentRoomState = roomState;
+
+    if (this.tabRoomCode) this.tabRoomCode.textContent = `ROOM: ${roomState.roomCode}`;
+    if (this.tabMode) this.tabMode.textContent = roomState.mode || 'TDM';
+    if (this.tabRedScore) this.tabRedScore.textContent = roomState.redScore || 0;
+    if (this.tabBlueScore) this.tabBlueScore.textContent = roomState.blueScore || 0;
+
+    if (this.tabScoreTbody && roomState.players) {
+      this.tabScoreTbody.innerHTML = '';
+      const isTdm = (roomState.mode || '').toUpperCase() === 'TDM';
+      if (this.tabScoresRow) {
+        this.tabScoresRow.style.display = isTdm ? 'flex' : 'none';
+      }
+
+      // Sort by kills descending
+      const sorted = [...roomState.players].sort((a, b) => (b.kills || 0) - (a.kills || 0));
+
+      sorted.forEach(p => {
+        const tr = document.createElement('tr');
+        const isLocal = p.id === this.localPlayerId || (this.getUsername() && p.username === this.getUsername());
+        tr.className = 'tab-score-row' + (isLocal ? ' local-player' : '');
+
+        const kd = p.deaths > 0 ? (p.kills / p.deaths).toFixed(1) : p.kills.toFixed(1);
+        const teamColor = p.team === 'RED' ? '#fca5a5' : p.team === 'BLUE' ? '#93c5fd' : '#e2e8f0';
+
+        tr.innerHTML = `
+          <td>${p.username}${p.isHost ? ' 👑' : ''}</td>
+          <td style="color: ${teamColor}; font-weight: 700;">${p.team}</td>
+          <td style="font-weight: 700; color: #f8fafc;">${p.kills || 0}</td>
+          <td style="color: #94a3b8;">${p.deaths || 0}</td>
+          <td style="color: #38bdf8;">${kd}</td>
+        `;
+        this.tabScoreTbody.appendChild(tr);
+      });
     }
   }
 }

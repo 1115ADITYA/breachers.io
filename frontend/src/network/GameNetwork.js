@@ -18,6 +18,7 @@ export class GameNetwork {
     this.localUsername = null;
     this.currentRoomCode = null;
 
+
     // Transmission Rate Limiting: 20 updates per second (50ms interval)
     this.updateIntervalMs = 50;
     this.lastSendTime = 0;
@@ -49,6 +50,14 @@ export class GameNetwork {
     this.onScoreUpdate = null;
     this.onMatchEnded = null;
     this.onSpawnProtection = null;
+
+    // Chunk 8 Callbacks
+    this.onBarrelIgnited = null;
+    this.onBarrelExploded = null;
+    this.onLootSpawned = null;
+    this.onLootCollected = null;
+    this.onLootExpired = null;
+    this.onBreachBonus = null;
 
     this.onlinePlayerCount = 1;
     this.pendingAction = null;
@@ -262,6 +271,26 @@ export class GameNetwork {
     this.send({ type: 'RETURN_TO_LOBBY' });
   }
 
+  shootBarrel(barrelId, weapon, hitPoint) {
+    if (!this.isConnected || !this.localPlayerId) return;
+    this.send({
+      type: 'SHOOT_BARREL',
+      barrelId,
+      weapon,
+      hitX: Math.round((hitPoint?.x || 0) * 1000) / 1000,
+      hitY: Math.round((hitPoint?.y || 0) * 1000) / 1000,
+      hitZ: Math.round((hitPoint?.z || 0) * 1000) / 1000
+    });
+  }
+
+  pickupLoot(lootId) {
+    if (!this.isConnected || !this.localPlayerId) return;
+    this.send({
+      type: 'PICKUP_LOOT',
+      lootId
+    });
+  }
+
   handleMessage(rawString) {
     let msg;
     try {
@@ -349,6 +378,30 @@ export class GameNetwork {
 
       case 'SPAWN_PROTECTION':
         if (this.onSpawnProtection) this.onSpawnProtection(msg);
+        break;
+
+      case 'BARREL_IGNITED':
+        if (this.onBarrelIgnited) this.onBarrelIgnited(msg);
+        break;
+
+      case 'BARREL_EXPLODED':
+        if (this.onBarrelExploded) this.onBarrelExploded(msg);
+        break;
+
+      case 'LOOT_SPAWNED':
+        if (this.onLootSpawned) this.onLootSpawned(msg);
+        break;
+
+      case 'LOOT_COLLECTED':
+        if (this.onLootCollected) this.onLootCollected(msg);
+        break;
+
+      case 'LOOT_EXPIRED':
+        if (this.onLootExpired) this.onLootExpired(msg);
+        break;
+
+      case 'BREACH_BONUS':
+        if (this.onBreachBonus) this.onBreachBonus(msg);
         break;
 
       case 'ERROR':

@@ -419,6 +419,8 @@ public class GameSessionManager {
 
         room.setStatus(MatchStatus.IN_PROGRESS);
         room.resetScores();
+        room.resetBarrels();
+        room.clearLoot();
 
         log.info("Match starting in room {}: mode={}, players={}", room.getRoomCode(), room.getMode(), room.getPlayerCount());
 
@@ -453,6 +455,12 @@ public class GameSessionManager {
                 }
 
                 room.decrementTimeRemaining();
+
+                // Clean expired loot drops
+                List<LootDrop> expiredLoot = room.cleanExpiredLoot();
+                for (LootDrop exp : expiredLoot) {
+                    broadcastToRoom(room.getRoomCode(), new ServerMessage.LootExpired(exp.getLootId()), null);
+                }
 
                 // Broadcast time update every 5 seconds or when nearing end
                 if (room.getTimeRemainingSec() % 5 == 0 || room.getTimeRemainingSec() <= 10) {
@@ -566,6 +574,8 @@ public class GameSessionManager {
         room.cancelMatchTimer();
         room.setStatus(MatchStatus.LOBBY);
         room.resetScores();
+        room.resetBarrels();
+        room.clearLoot();
 
         log.info("Room {} returned to lobby", room.getRoomCode());
         broadcastToRoom(room.getRoomCode(), room.buildRoomStateMessage(), null);
@@ -788,6 +798,13 @@ public class GameSessionManager {
                         weapon.getId()
                 );
                 broadcastToRoom(room.getRoomCode(), killFeedMsg, null);
+
+                // Spawn Ammo Loot Drop at elimination coordinates
+                String lootAmmo = closestVictim.getEquippedWeapon() != null ? closestVictim.getEquippedWeapon().getId() : "ASSAULT";
+                int lootAmount = "PISTOL".equalsIgnoreCase(lootAmmo) ? 15 : 30;
+                LootDrop drop = room.spawnLoot(closestVictim.getX(), closestVictim.getY() + 0.3, closestVictim.getZ(), lootAmmo, lootAmount);
+                broadcastToRoom(room.getRoomCode(),
+                        new ServerMessage.LootSpawned(drop.getLootId(), drop.getX(), drop.getY(), drop.getZ(), drop.getAmmoType(), drop.getAmount()), null);
 
                 // Update room score
                 boolean matchEnded = false;
@@ -1062,5 +1079,220 @@ public class GameSessionManager {
             map.put(p.getPlayerId(), p.getDeaths());
         }
         return map;
+    }
+
+    // ==========================================
+    // Chunk 8: Explosive Barrels & Loot Drops
+    // ==========================================
+
+    /**
+     * Handle client shooting an explosive barrel
+     */
+    public synchronized void handleShootBarrel(String socketId, ClientMessage.ShootBarrel msg) {
+        PlayerSession shooter = sessionsBySocketId.get(socketId);
+        if (shooter == null || shooter.isDead()) {
+            return;
+        }
+
+        GameRoom room = getRoomForPlayer(shooter);
+        if (room == null || room.getStatus() != MatchStatus.IN_PROGRESS) {
+            return;
+        }
+
+        ExplosiveBarrel barrel = room.getBarrel(msg.barrelId());
+        if (barrel == null || barrel.isExploded()) {
+            return;
+        }
+
+        // Validate distance
+        double dist = barrel.distanceTo(shooter.getX(), shooter.getY(), shooter.getZ());
+        WeaponType weapon = WeaponType.fromString(msg.weapon());
+        if (dist > weapon.getMaxRange() * 1.3) {
+            log.warn("Shot at barrel {} rejected: out of range (dist={})", msg.barrelId(), dist);
+            return;
+        }
+
+        // Apply damage to barrel
+        boolean firstIgnition = barrel.takeDamage(weapon.getBaseDamage(), shooter);
+        if (firstIgnition) {
+            log.info("Barrel {} in room {} ignited by {}", barrel.getBarrelId(), room.getRoomCode(), shooter.getUsername());
+            broadcastToRoom(room.getRoomCode(),
+                    new ServerMessage.BarrelIgnited(barrel.getBarrelId(), ExplosiveBarrel.FUSE_DURATION_SEC, shooter.getPlayerId()), null);
+
+            scheduler.schedule(() -> {
+                detonateBarrel(room, barrel, shooter);
+            }, (long) (ExplosiveBarrel.FUSE_DURATION_SEC * 1000), TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * Authoritatively detonate an explosive barrel with radial damage, knockback, chain reaction, and breach bonus
+     */
+    public synchronized void detonateBarrel(GameRoom room, ExplosiveBarrel barrel, PlayerSession igniter) {
+        if (!barrel.detonate()) {
+            return; // Already exploded (ensures exactly ONCE detonation)
+        }
+
+        double bx = barrel.getX();
+        double by = barrel.getY();
+        double bz = barrel.getZ();
+        double radius = ExplosiveBarrel.EXPLOSION_RADIUS;
+        double maxDmg = ExplosiveBarrel.MAX_EXPLOSION_DAMAGE;
+
+        log.info("Barrel {} in room {} detonated (igniter={})",
+                barrel.getBarrelId(), room.getRoomCode(), igniter != null ? igniter.getUsername() : "world");
+
+        boolean roomHadBreachBonus = false;
+
+        // Radial damage calculation for all alive players in room
+        for (PlayerSession victim : room.getPlayers()) {
+            if (victim.isDead()) continue;
+
+            // Spawn protection check (5s post-spawn immunity)
+            if (victim.isSpawnProtected()) {
+                continue;
+            }
+
+            double dist = barrel.distanceTo(victim.getX(), victim.getY(), victim.getZ());
+            if (dist <= radius) {
+                // Friendly fire check in TDM: teammates protected from friendly barrel explosion
+                if (room.getMode() == GameMode.TDM && igniter != null && victim != igniter &&
+                        igniter.getTeam().equalsIgnoreCase(victim.getTeam())) {
+                    continue;
+                }
+
+                int dmg = Math.max(10, (int) (maxDmg * (1.0 - (dist / radius))));
+                int remainingHealth = victim.takeDamage(dmg);
+
+                String igniterId = igniter != null ? igniter.getPlayerId() : "WORLD";
+                broadcastToRoom(room.getRoomCode(),
+                        new ServerMessage.PlayerHit(igniterId, victim.getPlayerId(), dmg, false, remainingHealth), null);
+                broadcastToRoom(room.getRoomCode(),
+                        new ServerMessage.HealthUpdated(victim.getPlayerId(), remainingHealth, PlayerSession.MAX_HEALTH), null);
+
+                // Check lethal elimination
+                if (remainingHealth <= 0) {
+                    victim.setDead(true);
+                    if (igniter != null) {
+                        igniter.incrementKills();
+                    }
+                    victim.incrementDeaths();
+
+                    boolean isBreachBonus = (igniter != null && igniter != victim);
+                    if (isBreachBonus) {
+                        roomHadBreachBonus = true;
+                    }
+
+                    String igniterName = igniter != null ? igniter.getUsername() : "Explosive Barrel";
+                    broadcastToRoom(room.getRoomCode(),
+                            new ServerMessage.PlayerDied(victim.getPlayerId(), igniterId, igniterName, victim.getUsername(), "BARREL"), null);
+
+                    broadcastToRoom(room.getRoomCode(),
+                            new ServerMessage.KillFeed(igniterName, victim.getUsername(), "BARREL", isBreachBonus), null);
+
+                    if (isBreachBonus) {
+                        broadcastToRoom(room.getRoomCode(),
+                                new ServerMessage.BreachBonus(igniter.getPlayerId(), igniter.getUsername(), 100), null);
+                    }
+
+                    // Loot drop at elimination position
+                    String ammoType = victim.getEquippedWeapon() != null ? victim.getEquippedWeapon().getId() : "ASSAULT";
+                    int amount = "PISTOL".equalsIgnoreCase(ammoType) ? 15 : 30;
+                    LootDrop drop = room.spawnLoot(victim.getX(), victim.getY() + 0.3, victim.getZ(), ammoType, amount);
+                    broadcastToRoom(room.getRoomCode(),
+                            new ServerMessage.LootSpawned(drop.getLootId(), drop.getX(), drop.getY(), drop.getZ(), drop.getAmmoType(), drop.getAmount()), null);
+
+                    // Update room scores
+                    if (igniter != null && room.getMode() == GameMode.TDM) {
+                        if ("RED".equalsIgnoreCase(igniter.getTeam())) {
+                            room.incrementRedScore();
+                        } else if ("BLUE".equalsIgnoreCase(igniter.getTeam())) {
+                            room.incrementBlueScore();
+                        }
+                    }
+
+                    // Respawn victim after 3s
+                    final String respawnPlayerId = victim.getPlayerId();
+                    final String currentRoomCode = room.getRoomCode();
+                    scheduler.schedule(() -> respawnPlayer(respawnPlayerId, currentRoomCode), 3000, TimeUnit.MILLISECONDS);
+                }
+            }
+        }
+
+        // Broadcast barrel explosion event
+        String igniterId = igniter != null ? igniter.getPlayerId() : "WORLD";
+        String igniterName = igniter != null ? igniter.getUsername() : "WORLD";
+        broadcastToRoom(room.getRoomCode(),
+                new ServerMessage.BarrelExploded(barrel.getBarrelId(), bx, by, bz, radius, maxDmg, igniterId, igniterName, roomHadBreachBonus), null);
+
+        // Update score broadcast
+        broadcastToRoom(room.getRoomCode(),
+                new ServerMessage.ScoreUpdate(room.getRedScore(), room.getBlueScore(), getKillsMap(room), getDeathsMap(room)), null);
+
+        // Check match win condition
+        checkMatchWinCondition(room, igniter);
+
+        // Chain reactions: ignite other unexploded barrels in vicinity with slight stagger
+        for (ExplosiveBarrel other : room.getAllBarrels()) {
+            if (!other.isExploded() && !other.isIgnited()) {
+                double dist = barrel.distanceTo(other.getX(), other.getY(), other.getZ());
+                if (dist <= radius * 1.25) {
+                    if (other.ignite(igniter)) {
+                        broadcastToRoom(room.getRoomCode(),
+                                new ServerMessage.BarrelIgnited(other.getBarrelId(), 0.25, igniterId), null);
+                        scheduler.schedule(() -> {
+                            detonateBarrel(room, other, igniter);
+                        }, 250, TimeUnit.MILLISECONDS);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle client loot pickup request
+     */
+    public synchronized void handlePickupLoot(String socketId, ClientMessage.PickupLoot msg) {
+        PlayerSession player = sessionsBySocketId.get(socketId);
+        if (player == null || player.isDead()) {
+            return;
+        }
+
+        GameRoom room = getRoomForPlayer(player);
+        if (room == null || room.getStatus() != MatchStatus.IN_PROGRESS) {
+            return;
+        }
+
+        LootDrop collected = room.collectLoot(msg.lootId(), player);
+        if (collected != null) {
+            WeaponType wType = WeaponType.fromString(collected.getAmmoType());
+            player.addReserveAmmo(wType, collected.getAmount());
+            log.info("Loot {} collected by {} in room {}", msg.lootId(), player.getUsername(), room.getRoomCode());
+            broadcastToRoom(room.getRoomCode(),
+                    new ServerMessage.LootCollected(collected.getLootId(), player.getPlayerId(), player.getUsername(), collected.getAmmoType(), collected.getAmount()), null);
+            sendWeaponState(player);
+        }
+    }
+
+    private void checkMatchWinCondition(GameRoom room, PlayerSession potentialWinner) {
+        boolean matchEnded = false;
+        String matchWinner = null;
+
+        if (room.getMode() == GameMode.TDM) {
+            if (room.getRedScore() >= room.getKillLimit()) {
+                matchEnded = true;
+                matchWinner = "RED";
+            } else if (room.getBlueScore() >= room.getKillLimit()) {
+                matchEnded = true;
+                matchWinner = "BLUE";
+            }
+        } else if (potentialWinner != null && potentialWinner.getKills() >= room.getKillLimit()) {
+            matchEnded = true;
+            matchWinner = potentialWinner.getUsername();
+        }
+
+        if (matchEnded) {
+            endMatch(room, matchWinner, "Kill limit reached");
+        }
     }
 }

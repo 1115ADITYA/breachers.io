@@ -164,10 +164,14 @@ public sealed interface ServerMessage {
             String type,
             String killerName,
             String victimName,
-            String weapon
+            String weapon,
+            boolean isBreachBonus
     ) implements ServerMessage {
         public KillFeed(String killerName, String victimName, String weapon) {
-            this("KILL_FEED", killerName, victimName, weapon);
+            this("KILL_FEED", killerName, victimName, weapon, false);
+        }
+        public KillFeed(String killerName, String victimName, String weapon, boolean isBreachBonus) {
+            this("KILL_FEED", killerName, victimName, weapon, isBreachBonus);
         }
     }
 
@@ -255,6 +259,84 @@ public sealed interface ServerMessage {
     ) implements ServerMessage {
         public SpawnProtection(String playerId, int durationMs, boolean active) {
             this("SPAWN_PROTECTION", playerId, durationMs, active);
+        }
+    }
+
+    // --- Chunk 8: Explosive Barrels, Loot Drops & Signature Feedback ---
+
+    record BarrelIgnited(
+            String type,
+            String barrelId,
+            double fuseDurationSec,
+            String igniterId
+    ) implements ServerMessage {
+        public BarrelIgnited(String barrelId, double fuseDurationSec, String igniterId) {
+            this("BARREL_IGNITED", barrelId, fuseDurationSec, igniterId);
+        }
+    }
+
+    record BarrelExploded(
+            String type,
+            String barrelId,
+            double x,
+            double y,
+            double z,
+            double radius,
+            double maxDamage,
+            String igniterId,
+            String igniterName,
+            boolean breachBonus
+    ) implements ServerMessage {
+        public BarrelExploded(String barrelId, double x, double y, double z, double radius, double maxDamage,
+                              String igniterId, String igniterName, boolean breachBonus) {
+            this("BARREL_EXPLODED", barrelId, x, y, z, radius, maxDamage, igniterId, igniterName, breachBonus);
+        }
+    }
+
+    record LootSpawned(
+            String type,
+            String lootId,
+            double x,
+            double y,
+            double z,
+            String ammoType,
+            int amount
+    ) implements ServerMessage {
+        public LootSpawned(String lootId, double x, double y, double z, String ammoType, int amount) {
+            this("LOOT_SPAWNED", lootId, x, y, z, ammoType, amount);
+        }
+    }
+
+    record LootCollected(
+            String type,
+            String lootId,
+            String collectorId,
+            String collectorName,
+            String ammoType,
+            int amount
+    ) implements ServerMessage {
+        public LootCollected(String lootId, String collectorId, String collectorName, String ammoType, int amount) {
+            this("LOOT_COLLECTED", lootId, collectorId, collectorName, ammoType, amount);
+        }
+    }
+
+    record LootExpired(
+            String type,
+            String lootId
+    ) implements ServerMessage {
+        public LootExpired(String lootId) {
+            this("LOOT_EXPIRED", lootId);
+        }
+    }
+
+    record BreachBonus(
+            String type,
+            String killerId,
+            String killerName,
+            int bonusPoints
+    ) implements ServerMessage {
+        public BreachBonus(String killerId, String killerName, int bonusPoints) {
+            this("BREACH_BONUS", killerId, killerName, bonusPoints);
         }
     }
 }

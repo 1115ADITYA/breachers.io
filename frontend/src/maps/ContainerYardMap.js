@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { TextureGenerator } from './TextureGenerator.js';
 import { ContainerFactory } from './ContainerFactory.js';
 import { IndustrialProps } from './IndustrialProps.js';
+import { ExplosiveBarrel } from '../entities/ExplosiveBarrel.js';
+import { BounceTyre } from '../entities/BounceTyre.js';
 
 /**
  * ContainerYardMap
@@ -16,6 +18,8 @@ export class ContainerYardMap {
     this.name = 'Container Yard';
     this.group = new THREE.Group();
     this.colliders = []; // Array of { box: THREE.Box3, type: string, mesh: THREE.Object3D }
+    this.explosiveBarrels = [];
+    this.bounceTyres = [];
 
     // Map Dimensions (X from -55 to +55, Z from -40 to +40)
     this.width = 110;
@@ -362,33 +366,37 @@ export class ContainerYardMap {
     addPalletStack(-30, 20, 3, 0.4);
     addPalletStack(30, -20, 3, -0.3);
 
-    // 4. Industrial Steel Drums / Chemical Barrels (Clusters for cover)
-    const addBarrel = (x, z, color = 'red') => {
-      const { group, colliderBox } = this.props.createSteelBarrel(x, 0, z, color);
-      this.group.add(group);
-      this.colliders.push({ box: colliderBox, type: 'barrel', mesh: group });
+    // 4. Interactive Explosive Barrels (Hazard warning rings, strobe LED, chain reactions)
+    this.explosiveBarrels = [];
+    const addExplosive = (barrelId, x, z) => {
+      const barrel = new ExplosiveBarrel(barrelId, x, 0, z, this.physicsWorld);
+      this.group.add(barrel.group);
+      this.colliders.push({ box: barrel.colliderBox, type: 'barrel', mesh: barrel.group });
+      this.explosiveBarrels.push(barrel);
     };
 
-    addBarrel(-14, 3, 'red');
-    addBarrel(-14.7, 3.4, 'yellow');
-    addBarrel(14, -3, 'red');
-    addBarrel(14.7, -3.4, 'yellow');
-    addBarrel(-28, 22, 'red');
-    addBarrel(28, -22, 'yellow');
-    addBarrel(0, -24, 'red');
-    addBarrel(0, 24, 'yellow');
+    addExplosive('barrel_cy_1', -14.7, 3.4);
+    addExplosive('barrel_cy_2', 14.7, -3.4);
+    addExplosive('barrel_cy_3', 28.0, -22.0);
+    addExplosive('barrel_cy_4', 0.0, 24.0);
+    addExplosive('barrel_cy_5', -14.0, 3.0);
+    addExplosive('barrel_cy_6', 14.0, -3.0);
+    addExplosive('barrel_cy_7', -28.0, 22.0);
+    addExplosive('barrel_cy_8', 0.0, -24.0);
 
-    // 5. Heavy Vehicle Tire Stacks (Near corners)
-    const addTireStack = (x, z, count = 3) => {
-      const { group, colliderBox } = this.props.createTireStack(x, 0, z, count);
-      this.group.add(group);
-      this.colliders.push({ box: colliderBox, type: 'tires', mesh: group });
+    // 5. Interactive Bounceable Tyres (Rapier physics boost, squash/spring animation)
+    this.bounceTyres = [];
+    const addBounceTyre = (tyreId, x, z, count = 3) => {
+      const tyre = new BounceTyre(tyreId, x, 0, z, count);
+      this.group.add(tyre.group);
+      this.colliders.push({ box: tyre.colliderBox, type: 'tires', mesh: tyre.group });
+      this.bounceTyres.push(tyre);
     };
 
-    addTireStack(-42, -26, 3);
-    addTireStack(42, 26, 3);
-    addTireStack(-10, 24, 2);
-    addTireStack(10, -24, 2);
+    addBounceTyre('tyre_cy_1', -42, -26, 3);
+    addBounceTyre('tyre_cy_2', 42, 26, 3);
+    addBounceTyre('tyre_cy_3', -10, 24, 2);
+    addBounceTyre('tyre_cy_4', 10, -24, 2);
 
     // 6. Wooden Cable Reels
     const addReel = (x, z, rotY = 0) => {
@@ -569,7 +577,17 @@ export class ContainerYardMap {
     });
   }
 
+  getExplosiveBarrels() {
+    return this.explosiveBarrels;
+  }
+
+  getBounceTyres() {
+    return this.bounceTyres;
+  }
+
   dispose() {
     this.colliders = [];
+    this.explosiveBarrels = [];
+    this.bounceTyres = [];
   }
 }

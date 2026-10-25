@@ -19,7 +19,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = ClientMessage.SetGameMode.class, name = "SET_GAME_MODE"),
         @JsonSubTypes.Type(value = ClientMessage.SetTeam.class, name = "SET_TEAM"),
         @JsonSubTypes.Type(value = ClientMessage.StartMatch.class, name = "START_MATCH"),
-        @JsonSubTypes.Type(value = ClientMessage.ReturnToLobby.class, name = "RETURN_TO_LOBBY")
+        @JsonSubTypes.Type(value = ClientMessage.ReturnToLobby.class, name = "RETURN_TO_LOBBY"),
+        @JsonSubTypes.Type(value = ClientMessage.ShootBarrel.class, name = "SHOOT_BARREL"),
+        @JsonSubTypes.Type(value = ClientMessage.PickupLoot.class, name = "PICKUP_LOOT")
 })
 @JsonIgnoreProperties(ignoreUnknown = true)
 public sealed interface ClientMessage {
@@ -68,4 +70,15 @@ public sealed interface ClientMessage {
     record StartMatch() implements ClientMessage {}
 
     record ReturnToLobby() implements ClientMessage {}
+
+    record ShootBarrel(
+            long shotId,
+            String barrelId,
+            String weapon,
+            double hitX,
+            double hitY,
+            double hitZ
+    ) implements ClientMessage {}
+
+    record PickupLoot(String lootId) implements ClientMessage {}
 }
