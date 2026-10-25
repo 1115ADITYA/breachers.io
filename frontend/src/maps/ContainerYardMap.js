@@ -542,4 +542,34 @@ export class ContainerYardMap {
       maxZ: this.depth / 2
     };
   }
+
+  /**
+   * Populate Rapier PhysicsWorld with static colliders and dynamic props
+   * @param {Object} physicsWorld 
+   */
+  initPhysics(physicsWorld) {
+    if (!physicsWorld || !physicsWorld.isReady) return;
+    physicsWorld.clearMapColliders();
+
+    let dynamicPropCount = 0;
+    this.colliders.forEach(c => {
+      // Register selected small crates and chemical barrels as dynamic interactive props
+      if ((c.type === 'crate' || c.type === 'barrel') && c.mesh && dynamicPropCount < 16) {
+        dynamicPropCount++;
+        const s = new THREE.Vector3();
+        c.box.getSize(s);
+        if (c.type === 'barrel') {
+          physicsWorld.addDynamicProp(c.mesh, 'cylinder', { radius: Math.max(0.3, s.x / 2), height: s.y }, 20.0);
+        } else {
+          physicsWorld.addDynamicProp(c.mesh, 'box', { width: s.x, height: s.y, depth: s.z }, 25.0);
+        }
+      } else {
+        physicsWorld.addStaticBox(c.box);
+      }
+    });
+  }
+
+  dispose() {
+    this.colliders = [];
+  }
 }

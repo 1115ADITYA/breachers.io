@@ -57,6 +57,7 @@ export class Weapon {
     this.collisionSystem = collisionSystem;
     this.hud = hud;
     this.network = network;
+    this.physicsWorld = null;
 
     // Equipped weapon state
     this.currentType = 'ASSAULT';
@@ -106,6 +107,10 @@ export class Weapon {
 
   setNetwork(network) {
     this.network = network;
+  }
+
+  setPhysicsWorld(physicsWorld) {
+    this.physicsWorld = physicsWorld;
   }
 
   setTargets(targets) {
@@ -452,6 +457,12 @@ export class Weapon {
       } else if (!stats.isMelee) {
         const farPoint = ray.origin.clone().add(ray.direction.clone().multiplyScalar(stats.range));
         this.spawnTracer(farPoint);
+      }
+
+      // Apply physical bullet impulse to dynamic props (crates, barrels)
+      if (this.physicsWorld && this.physicsWorld.isReady) {
+        const hitPoint = worldHit ? worldHit.point : ray.origin.clone().addScaledVector(ray.direction, Math.min(stats.range, 30));
+        this.physicsWorld.applyBulletImpulse(hitPoint, ray.direction, stats.damage * 1.2);
       }
     }
 

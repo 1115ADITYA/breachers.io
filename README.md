@@ -406,7 +406,113 @@ node ../scratch/test-chunk4-tdm-ffa-rules.mjs
 - Real-time **Look Sensitivity** (0.2x to 3.0x).
 - **Graphics Quality Presets** (High, Medium, Low).
 - Real-time **FPS Counter Display** toggle.
-- Preferences automatically persisted to `localStorage`.
+
+---
+
+## Academic Demonstration & Realistic Physics (Chunk 7)
+
+### 1. Realistic Game Physics with Rapier 3D WebAssembly
+
+#### Why Rapier Was Selected
+- **WebAssembly Performance**: `@dimforge/rapier3d-compat` compiles Rust's high-performance Rapier physics engine to WebAssembly. This delivers deterministic, near-native execution speeds directly inside the browser event loop without the garbage-collection stutters common in pure JavaScript physics engines.
+- **Dedicated Kinematic Character Controller**: Rapier provides a first-class `KinematicCharacterController` specifically engineered for FPS games. It natively supports capsule collision sliding, step-handling over low obstacles/curbs (`enableAutostep(0.45, 0.2, true)`), slope sliding without snagging, and ground snapping (`enableSnapToGround(0.35)`).
+- **Exact Trimesh Colliders**: Solves the classic "invisible wall" problem by generating exact triangle-mesh colliders from complex GLTF/GLB architectural nodes instead of approximating hollow structures with oversized AABB boxes.
+
+#### Three.js & Physics Synchronization
+- The physics world operates on a fixed 60 Hz physics timestep (`dt = 1/60` s) with an accumulator loop in [`main.js`](file:///frontend/src/main.js):
+  ```javascript
+  physicsWorld.step(deltaTime);
+  ```
+- **Player Kinematic Capsule**: The player is represented as a vertical capsule (radius `0.45m`, total height `1.8m`). During each frame, [`PlayerController.js`](file:///frontend/src/player/PlayerController.js) calculates desired movement translations and passes them to `physicsWorld.moveCharacter(...)`. The character controller solves contacts against static walls, trimeshes, and dynamic props, returning the collision-resolved translation to update the Three.js camera and audio listener.
+- **Dynamic Interactive Props**: Selected tactical props (shipping crates, industrial oil barrels) are instantiated as Rapier dynamic rigid bodies. When shot by bullets ([`Weapon.js`](file:///frontend/src/player/Weapon.js)), ballistic impulses are applied (`applyBulletImpulse(hitPoint, direction, impulse)`), knocking barrels over and sliding crates across the floor. In each physics tick, the dynamic rigid bodies' positions and quaternions are copied directly to their Three.js mesh counterparts.
+- **Graceful Fallback**: If WebAssembly fails to compile or load, the client gracefully falls back to the baseline AABB [`CollisionSystem.js`](file:///frontend/src/physics/CollisionSystem.js) with zero crashes.
+
+#### Collision Debugging View (`F3` / `P`)
+- A dedicated development visualizer ([`PhysicsDebugger.js`](file:///frontend/src/physics/PhysicsDebugger.js)) extracts wireframe buffers via `world.debugRender()`:
+  - Yellow/cyan lines indicate active static and trimesh colliders.
+  - White capsule wireframe outlines the player's physical contact volume.
+  - Green indicator shows grounded status; magenta shows airborne state.
+  - Toggle live in-game by pressing **`F3`** or **`P`**.
+  - Automatically disabled by default in production builds.
+
+#### Invisible-Wall Root Cause & Resolution
+- **Root Cause**: In the GLB Warehouse model, the node named `room` spans `32.2m x 12.5m x 10.4m`. Generating a bounding box (AABB) around `room` enclosed the entire hollow indoor playable area in a single solid box, blocking doorways and interior corridors with invisible walls.
+- **Resolution**: In [`WarehouseMap.js`](file:///frontend/src/maps/WarehouseMap.js), compound structural meshes (`room`, `Cube.004`, `Cube.016`) are converted into exact Rapier Trimesh colliders, allowing players to walk freely through open doors while respecting exterior walls.
+
+---
+
+### 2. Spring Boot JDBC Persistence & SQL Architecture
+
+#### What JDBC Does in the Project
+The backend uses Spring Boot's `JdbcTemplate` ([`MatchPersistenceService.java`](file:///backend/src/main/java/io/breachers/persistence/MatchPersistenceService.java)) to provide robust, thread-safe, and parameterized relational persistence for game sessions. High-frequency movement and combat packets remain non-blocking; completed matches are dispatched to a dedicated single-threaded daemon executor that writes match summaries and updates cumulative player career statistics.
+
+#### Relational Database Engine & Schema
+- **Database Engine**: Embedded H2 relational database in memory (`jdbc:h2:mem:breachersdb;DB_CLOSE_DELAY=-1`).
+- **Data Definition (`schema.sql`)**:
+  - `match_history`: Stores completed match records with primary key `match_id` (UUID), room code, game mode (TDM/FFA), winning team/player, match duration in seconds, total kills, completion timestamp, and a JSON summary of participants.
+  - `player_statistics`: Stores persistent career stats for operators keyed by `username`, tracking matches played, wins, losses, kills, deaths, headshots, and calculated K/D ratio and win rate percentage.
+- **SQL Operations Implemented**:
+  - Parameterized `INSERT INTO match_history (...) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`.
+  - Upsert on `player_statistics` (checking existing record via parameterized `SELECT`, followed by `INSERT` or cumulative `UPDATE`).
+  - Query for recent matches ordered by `completed_at DESC LIMIT ?`.
+  - Query for leaderboard / top career operators ordered by `kills DESC LIMIT ?`.
+  - Aggregated global statistics (`COUNT(*)`, `SUM(total_kills)`).
+
+---
+
+### 3. Java Servlet Academic Demonstration
+
+#### Architecture & Registration
+To demonstrate traditional Java Enterprise Servlet programming integrated alongside modern Spring Boot architectures, the project includes an explicitly configured HTTP Servlet:
+- **Servlet Class**: [`MatchReportServlet.java`](file:///backend/src/main/java/io/breachers/servlet/MatchReportServlet.java) (extends `HttpServlet`).
+- **Registration**: Registered via [`ServletRegistrationBean`](file:///backend/src/main/java/io/breachers/config/AcademicServletConfig.java) at `/academic/match-report`.
+- **Service Access**: Directly wired with `MatchPersistenceService` via Spring dependency injection.
+
+#### Endpoints & Formats
+1. **HTML Tactical Report**:
+   ```
+   GET http://localhost:8081/academic/match-report
+   ```
+   Renders a responsive, cyber-tactical dark-mode HTML document containing:
+   - Global persistence statistics (total matches recorded, registered operators, total kills).
+   - Recent match history table (Match ID, Room, Mode, Winner, Duration, Kills, Timestamp).
+   - Career Leaderboard table (Operator, Matches, Wins, Losses, Kills, Deaths, K/D Ratio, Win Rate).
+   - Full HTML entity escaping on user-provided strings to prevent Cross-Site Scripting (XSS).
+2. **JSON Machine-Readable Report**:
+   ```
+   GET http://localhost:8081/academic/match-report?format=json
+   ```
+   Returns the raw persisted dataset serialized into structured JSON.
+
+---
+
+### 4. How to Demonstrate the Feature
+
+1. **Start the Backend**:
+   ```powershell
+   cd backend
+   $env:JAVA_HOME = "C:\Program Files\Java\jdk-26.0.2"
+   .\mvnw.cmd spring-boot:run
+   ```
+2. **Start the Frontend**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+3. **Play and Complete a Match**:
+   - Open `http://localhost:5173/` in your browser.
+   - Deploy into **Warehouse** or **Container Yard**, or host a private room with 2 players.
+   - Press **`F3`** to inspect the active Rapier 3D colliders and ground contacts in real time.
+   - Fire at wooden crates and oil barrels to observe physical bullet impulses.
+   - Conclude the match (reach kill limit or host clicks return to lobby).
+4. **View the Persisted Report**:
+   - Open `http://localhost:8081/academic/match-report` in any browser.
+   - Observe the newly recorded match ID, authoritative server scores, and updated operator career K/D ratios.
+   - Append `?format=json` to inspect the raw JSON output.
+
+#### Deployment Scope
+- **Local Demonstration**: Embedded H2 database and Rapier WebAssembly client run locally with zero external database dependencies.
+- **Production Persistence**: The Spring JDBC abstraction allows switching from H2 to PostgreSQL or MySQL simply by updating `spring.datasource.url` in `application.yml` with no code changes.
 
 
 

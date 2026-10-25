@@ -5,6 +5,8 @@ import io.breachers.multiplayer.dto.ClientMessage;
 import io.breachers.multiplayer.dto.PlayerState;
 import io.breachers.multiplayer.dto.ServerMessage;
 import io.breachers.multiplayer.model.*;
+import io.breachers.persistence.MatchPersistenceService;
+import io.breachers.persistence.MatchRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,13 +41,20 @@ public class GameSessionManager {
     public static final int MAX_UPDATES_PER_SECOND = 35;
 
     private final ObjectMapper objectMapper;
+    private final MatchPersistenceService persistenceService;
     private final Map<String, PlayerSession> sessionsBySocketId = new ConcurrentHashMap<>();
     private final Map<String, PlayerSession> sessionsByPlayerId = new ConcurrentHashMap<>();
     private final Map<String, GameRoom> roomsByCode = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
     public GameSessionManager(ObjectMapper objectMapper) {
+        this(objectMapper, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public GameSessionManager(ObjectMapper objectMapper, MatchPersistenceService persistenceService) {
         this.objectMapper = objectMapper;
+        this.persistenceService = persistenceService;
         // Initialize default room for backward-compatible quick joining and Chunks 0-3 tests
         GameRoom defaultRoom = new GameRoom(DEFAULT_ROOM_CODE, null, GameMode.TDM);
         roomsByCode.put(DEFAULT_ROOM_CODE, defaultRoom);
@@ -493,6 +502,48 @@ public class GameSessionManager {
         broadcastToRoom(room.getRoomCode(), new ServerMessage.MatchEnded(
                 winner, reason, room.getRedScore(), room.getBlueScore(), leaderboard), null);
         broadcastToRoom(room.getRoomCode(), room.buildRoomStateMessage(), null);
+
+        // Academic Persistence via JDBC
+        if (persistenceService != null) {
+            try {
+                List<MatchRecord.PlayerResult> playerResults = new ArrayList<>();
+                for (ServerMessage.PlayerMatchResult p : leaderboard) {
+                    boolean won = false;
+                    if ("TDM".equalsIgnoreCase(room.getMode().name())) {
+                        won = winner != null && winner.equalsIgnoreCase(p.team());
+                    } else {
+                        won = winner != null && winner.equalsIgnoreCase(p.username());
+                    }
+                    playerResults.add(new MatchRecord.PlayerResult(
+                            p.username(),
+                            p.team(),
+                            p.kills(),
+                            p.deaths(),
+                            p.score(),
+                            won
+                    ));
+                }
+
+                int duration = room.getMode().getDefaultDurationSeconds() - room.getTimeRemainingSec();
+                MatchRecord record = new MatchRecord(
+                        room.getRoomCode(),
+                        room.getMode().name(),
+                        "container_yard",
+                        winner != null ? winner : "TIE",
+                        room.getRedScore(),
+                        room.getBlueScore(),
+                        room.getPlayerCount(),
+                        reason,
+                        Math.max(0, duration),
+                        java.time.LocalDateTime.now(),
+                        playerResults
+                );
+
+                persistenceService.recordMatchAsync(record);
+            } catch (Exception e) {
+                log.error("Failed to record match in persistence service:", e);
+            }
+        }
     }
 
     /**
@@ -504,6 +555,13 @@ public class GameSessionManager {
 
         GameRoom room = getRoomForPlayer(player);
         if (room == null) return;
+
+        if (room.getStatus() == MatchStatus.IN_PROGRESS) {
+            String winner = "TIE";
+            if (room.getRedScore() > room.getBlueScore()) winner = "RED";
+            else if (room.getBlueScore() > room.getRedScore()) winner = "BLUE";
+            endMatch(room, winner, "Concluded by host");
+        }
 
         room.cancelMatchTimer();
         room.setStatus(MatchStatus.LOBBY);

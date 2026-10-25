@@ -7,11 +7,12 @@ import * as THREE from 'three';
  * automatic firing, and death state disabling.
  */
 export class PlayerController {
-  constructor(camera, domElement, collisionSystem, hud) {
+  constructor(camera, domElement, collisionSystem, hud, physicsWorld = null) {
     this.camera = camera;
     this.domElement = domElement;
     this.collisionSystem = collisionSystem;
     this.hud = hud;
+    this.physicsWorld = physicsWorld;
 
     // Dimensions
     this.radius = 0.45;
@@ -74,6 +75,10 @@ export class PlayerController {
     }
   }
 
+  setPhysicsWorld(physicsWorld) {
+    this.physicsWorld = physicsWorld;
+  }
+
   setWeapon(weapon) {
     this.weapon = weapon;
   }
@@ -103,6 +108,9 @@ export class PlayerController {
     this.velocity.set(0, 0, 0);
     this.setDead(false);
     this.applySpawnProtection(5000); // 5-second mandatory spawn protection on every spawn
+    if (this.physicsWorld && this.physicsWorld.isReady) {
+      this.physicsWorld.setPlayerPosition(x, y, z);
+    }
     this.updateCamera();
   }
 
@@ -323,20 +331,25 @@ export class PlayerController {
       this.velocity.y = Math.max(-45, this.velocity.y);
     }
 
-    // 3. Move and resolve collisions via CollisionSystem
+    // 3. Move and resolve collisions via Rapier PhysicsWorld (with fallback to CollisionSystem)
     const desiredMove = new THREE.Vector3(
       this.velocity.x * delta,
       this.velocity.y * delta,
       this.velocity.z * delta
     );
 
-    const collisionResult = this.collisionSystem.movePlayer(
-      this.position,
-      desiredMove,
-      this.radius,
-      this.height,
-      0.45
-    );
+    let collisionResult;
+    if (this.physicsWorld && this.physicsWorld.isReady) {
+      collisionResult = this.physicsWorld.movePlayer(this.position, desiredMove);
+    } else {
+      collisionResult = this.collisionSystem.movePlayer(
+        this.position,
+        desiredMove,
+        this.radius,
+        this.height,
+        0.45
+      );
+    }
 
     this.position.copy(collisionResult.position);
     this.isGrounded = collisionResult.isGrounded;

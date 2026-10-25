@@ -11,6 +11,8 @@ import { GameNetwork } from './network/GameNetwork.js';
 import { HUD } from './ui/HUD.js';
 import { MenuPreviewScene } from './menu/MenuPreviewScene.js';
 import { MenuController } from './ui/MenuController.js';
+import { PhysicsWorld } from './physics/PhysicsWorld.js';
+import { PhysicsDebugger } from './physics/PhysicsDebugger.js';
 
 // -------------------------------------------------------------
 // 1. Scene & Renderer Initialization
@@ -81,9 +83,26 @@ const ambientBase = new THREE.AmbientLight(0x161c28, 0.25);
 scene.add(ambientBase);
 
 // -------------------------------------------------------------
-// 3. Collision System & Map Management
+// 3. Collision System & Physics World Management
 // -------------------------------------------------------------
 const collisionSystem = new CollisionSystem();
+const physicsWorld = new PhysicsWorld();
+const physicsDebugger = new PhysicsDebugger(scene, physicsWorld);
+
+// Asynchronously initialize Rapier3D WASM physics
+physicsWorld.init().then(ready => {
+  if (ready) {
+    if (player) player.setPhysicsWorld(physicsWorld);
+    if (weapon) weapon.setPhysicsWorld(physicsWorld);
+    if (currentMap) {
+      if (currentMap.id === 'warehouse') {
+        currentMap.buildColliders(currentMap.getMesh().children[1] || currentMap.getMesh(), physicsWorld);
+      } else if (currentMap.initPhysics) {
+        currentMap.initPhysics(physicsWorld);
+      }
+    }
+  }
+});
 
 let currentMap = null;
 let currentMapId = null;
@@ -140,16 +159,22 @@ async function loadMap(mapId, onProgress = null) {
       currentMap.dispose();
     }
     collisionSystem.clear();
+    if (physicsWorld && physicsWorld.isReady) {
+      physicsWorld.clearMapColliders();
+    }
   }
 
   currentMapId = mapId;
 
   if (mapId === 'warehouse') {
     const warehouse = new WarehouseMap();
-    await warehouse.load(onProgress);
+    await warehouse.load(onProgress, physicsWorld);
     currentMap = warehouse;
   } else {
     currentMap = new ContainerYardMap();
+    if (currentMap.initPhysics) {
+      currentMap.initPhysics(physicsWorld);
+    }
     if (onProgress) onProgress(100);
   }
 
@@ -269,10 +294,11 @@ function applySettings(settings) {
 // -------------------------------------------------------------
 // 7. Local Player Controller & Weapon
 // -------------------------------------------------------------
-player = new PlayerController(camera, renderer.domElement, collisionSystem, hud);
+player = new PlayerController(camera, renderer.domElement, collisionSystem, hud, physicsWorld);
 
 // Weapons setup
 weapon = new Weapon(camera, scene, collisionSystem, hud, gameNetwork);
+weapon.setPhysicsWorld(physicsWorld);
 player.setWeapon(weapon);
 
 // Initially player is disabled (Menu mode: mouse unlocked, no controls)
@@ -546,6 +572,12 @@ function animate() {
   requestAnimationFrame(animate);
 
   const delta = Math.min(clock.getDelta(), 0.1);
+
+  // 0. Step Physics World & Synchronize Dynamic Props
+  if (physicsWorld && physicsWorld.isReady) {
+    physicsWorld.step(delta);
+  }
+  physicsDebugger.update(player);
 
   // 1. Update Local Player Physics & Camera (Only during gameplay when unlocked)
   if (player && player.enabled) {

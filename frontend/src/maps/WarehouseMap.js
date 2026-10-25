@@ -100,7 +100,16 @@ export class WarehouseMap {
    * @param {Function} [onProgress] Progress callback with percentage (0-100)
    * @returns {Promise<WarehouseMap>}
    */
-  load(onProgress = null) {
+  /**
+   * Asynchronously load warehouse GLB model, apply scale/transforms,
+   * build realistic Rapier colliders & AABB fallback, and resolve invisible walls.
+   * 
+   * @param {Function} [onProgress] Progress callback with percentage (0-100)
+   * @param {Object} [physicsWorld] Optional Rapier PhysicsWorld instance
+   * @returns {Promise<WarehouseMap>}
+   */
+  load(onProgress = null, physicsWorld = null) {
+    this.physicsWorld = physicsWorld;
     if (this.isLoaded) return Promise.resolve(this);
 
     return new Promise((resolve, reject) => {
@@ -133,10 +142,10 @@ export class WarehouseMap {
             });
 
             this.group.add(model);
-            this.buildColliders(model);
+            this.buildColliders(model, this.physicsWorld);
 
             this.isLoaded = true;
-            console.log(`[WarehouseMap] Successfully loaded model and generated ${this.colliders.length} colliders`);
+            console.log(`[WarehouseMap] Successfully loaded model and generated ${this.colliders.length} colliders (Physics: ${this.physicsWorld?.isReady ? 'Rapier3D Active' : 'AABB Fallback'})`);
             resolve(this);
           } catch (err) {
             console.error('[WarehouseMap] Error configuring loaded model:', err);
@@ -163,10 +172,14 @@ export class WarehouseMap {
    * Build complete collision geometry:
    * 1. Ground floor plane
    * 2. Outer warehouse perimeter containment walls
-   * 3. Interior tactical cover objects (crates, boxes, rooms, barrels)
+   * 3. Architectural trimesh colliders for hollow rooms (resolves invisible walls)
+   * 4. Interior tactical cover objects (crates, boxes, barrels) with Rapier dynamic props
    */
-  buildColliders(model) {
+  buildColliders(model, physicsWorld = null) {
     this.colliders = [];
+    if (physicsWorld && physicsWorld.isReady) {
+      physicsWorld.clearMapColliders();
+    }
 
     // 1. Playable Floor plane (Y = 0)
     const floorBox = new THREE.Box3(
@@ -174,74 +187,98 @@ export class WarehouseMap {
       new THREE.Vector3(45, 0.0, 25)
     );
     this.colliders.push({ box: floorBox, type: 'ground', mesh: null });
+    if (physicsWorld && physicsWorld.isReady) {
+      physicsWorld.addStaticBox(floorBox);
+    }
 
     // 2. Outer Perimeter Containment Walls (Ensures player can never exit warehouse perimeter)
-    // West Wall (X = -32.5)
-    this.colliders.push({
-      box: new THREE.Box3(
-        new THREE.Vector3(-35.0, 0, -22.0),
-        new THREE.Vector3(-31.5, 20, 22.0)
-      ),
-      type: 'wall',
-      mesh: null
+    const perimeterWalls = [
+      // West Wall (X = -32.5)
+      new THREE.Box3(new THREE.Vector3(-35.0, 0, -22.0), new THREE.Vector3(-31.5, 20, 22.0)),
+      // East Wall (X = +32.5)
+      new THREE.Box3(new THREE.Vector3(31.5, 0, -22.0), new THREE.Vector3(35.0, 20, 22.0)),
+      // North Wall (Z = -18.5)
+      new THREE.Box3(new THREE.Vector3(-35.0, 0, -22.0), new THREE.Vector3(35.0, 20, -17.5)),
+      // South Wall (Z = +18.5)
+      new THREE.Box3(new THREE.Vector3(-35.0, 0, 17.5), new THREE.Vector3(35.0, 20, 22.0))
+    ];
+
+    perimeterWalls.forEach(box => {
+      this.colliders.push({ box, type: 'wall', mesh: null });
+      if (physicsWorld && physicsWorld.isReady) {
+        physicsWorld.addStaticBox(box);
+      }
     });
 
-    // East Wall (X = +32.5)
-    this.colliders.push({
-      box: new THREE.Box3(
-        new THREE.Vector3(31.5, 0, -22.0),
-        new THREE.Vector3(35.0, 20, 22.0)
-      ),
-      type: 'wall',
-      mesh: null
-    });
-
-    // North Wall (Z = -18.5)
-    this.colliders.push({
-      box: new THREE.Box3(
-        new THREE.Vector3(-35.0, 0, -22.0),
-        new THREE.Vector3(35.0, 20, -17.5)
-      ),
-      type: 'wall',
-      mesh: null
-    });
-
-    // South Wall (Z = +18.5)
-    this.colliders.push({
-      box: new THREE.Box3(
-        new THREE.Vector3(-35.0, 0, 17.5),
-        new THREE.Vector3(35.0, 20, 22.0)
-      ),
-      type: 'wall',
-      mesh: null
-    });
-
-    // 3. Interior Obstacles: Extract substantial bounding boxes from model's top-level objects
+    // 3. Interior Obstacles: Extract verified colliders and resolve invisible wall issues
     let rootNode = null;
     model.traverse((c) => {
       if (c.name === 'Root') rootNode = c;
     });
 
     if (rootNode) {
+      // Dynamic prop selection counters
+      let dynamicBarrelCount = 0;
+      let dynamicBoxCount = 0;
+
       rootNode.children.forEach((child) => {
-        const name = child.name;
+        const name = child.name || '';
         // Ignore ground planes or floor markers
         if (name.includes('Plane') || name.includes('floors')) return;
 
+        // INVISIBLE WALL FIX #1: Hollow compound architectural structures (e.g. 'room')
+        // Instead of a monolithic bounding box that seals off the doorways and room interior,
+        // create a physically accurate Trimesh collider in Rapier!
+        if (name.includes('room')) {
+          child.traverse((m) => {
+            if (m.isMesh && physicsWorld && physicsWorld.isReady) {
+              physicsWorld.addTrimeshFromMesh(m);
+            }
+          });
+          // Do not add monolithic box to AABB list so doorways remain unblocked
+          return;
+        }
+
+        // INVISIBLE WALL FIX #2: Compound perimeter wall geometry in GLTF
+        // Cube.004, Cube.016, up2 are outer shell structures already bounded by our perimeter containment
+        if (name === 'Cube.004' || name === 'Cube.016' || name === 'up2') {
+          return;
+        }
+
+        // Check object dimensions
         const b = new THREE.Box3().setFromObject(child);
         const s = new THREE.Vector3();
         b.getSize(s);
 
-        // Filter for substantial tactical cover objects (height >= 0.8m, width/depth >= 0.6m)
-        if (s.y >= 0.8 && (s.x >= 0.6 || s.z >= 0.6)) {
-          // Avoid registering duplicate colliders if it completely encloses our perimeter
-          if (s.x > 50 && s.z > 30) return;
+        // Filter for substantial tactical cover objects (height >= 0.7m, width/depth >= 0.5m)
+        if (s.y >= 0.7 && (s.x >= 0.5 || s.z >= 0.5)) {
+          // Avoid registering duplicate colliders if it spans the entire perimeter
+          if (s.x > 45 || s.z > 25) return;
 
+          // Register in baseline AABB colliders
           this.colliders.push({
             box: b,
             type: 'solid',
             mesh: child
           });
+
+          // Rapier 3D physics collider registration
+          if (physicsWorld && physicsWorld.isReady) {
+            // Interactive dynamic props for selected small barrels and crates
+            const isBarrel = name.includes('Barrel');
+            const isSmallBox = (name.includes('miniBox') || name.includes('Box.')) && s.x < 2.0 && s.z < 2.0;
+
+            if (isBarrel && dynamicBarrelCount < 10) {
+              dynamicBarrelCount++;
+              physicsWorld.addDynamicProp(child, 'cylinder', { radius: Math.max(0.3, s.x / 2), height: s.y }, 25.0);
+            } else if (isSmallBox && dynamicBoxCount < 12) {
+              dynamicBoxCount++;
+              physicsWorld.addDynamicProp(child, 'box', { width: s.x, height: s.y, depth: s.z }, 30.0);
+            } else {
+              // Static solid collider (pillars, big cargo crates, structural columns)
+              physicsWorld.addStaticBox(b);
+            }
+          }
         }
       });
     }
@@ -304,6 +341,9 @@ export class WarehouseMap {
     });
 
     this.colliders = [];
+    if (this.physicsWorld && this.physicsWorld.isReady) {
+      this.physicsWorld.clearMapColliders();
+    }
     this.isLoaded = false;
   }
 }
