@@ -39,6 +39,11 @@ export class MenuController {
     this.currentScreen = 'HOME';
     this.currentRoomState = null;
     this.localPlayerId = null;
+    this.customServerUrl = (typeof window !== 'undefined' && window.localStorage)
+      ? (window.localStorage.getItem('breachers_backend_ws_url') || '')
+      : '';
+    this.lobbyTimeout = null;
+    this.bannerTimeout = null;
 
     this.container = document.getElementById('menu-container');
     this.initDOM();
@@ -77,6 +82,10 @@ export class MenuController {
           </nav>
 
           <div class="topbar-user-panel">
+            <div class="server-status-badge" id="menu-server-status" title="Multiplayer Backend Connection Status">
+              <span class="status-dot disconnected" id="menu-server-dot"></span>
+              <span class="status-label" id="menu-server-label">SERVER: CONNECTING</span>
+            </div>
             <div class="user-callsign-badge">
               <span class="user-role-tag" id="topbar-role-tag">ASSAULT</span>
               <span class="user-name" id="topbar-username">${this.username}</span>
@@ -106,6 +115,12 @@ export class MenuController {
 
           <!-- Right Content Column: Switched per screen -->
           <div class="menu-content-column">
+            <!-- Global Tactical Alert / Error Banner -->
+            <div id="menu-alert-banner" class="menu-alert-banner hidden">
+              <span class="alert-icon">⚠️</span>
+              <span id="menu-alert-message" class="alert-message"></span>
+              <button id="btn-menu-alert-close" class="btn-alert-close" title="Dismiss notice">✕</button>
+            </div>
 
             <!-- SCREEN 1: HOME -->
             <section id="screen-home" class="menu-screen active">
@@ -276,6 +291,16 @@ export class MenuController {
                   </div>
                   <span class="setting-subtext">Toggle real-time rendering frame-rate indicator</span>
                 </div>
+
+                <!-- Multiplayer Server URL Configuration -->
+                <div class="setting-item">
+                  <div class="setting-label-row">
+                    <label for="setting-server-url">MULTIPLAYER SERVER URL</label>
+                    <span class="setting-val-chip" id="label-server-status-chip">CLOUD READY</span>
+                  </div>
+                  <input id="setting-server-url" class="setting-input-text" type="text" placeholder="wss://breachers-backend.onrender.com/ws/game" value="${this.customServerUrl}" autocomplete="off" />
+                  <span class="setting-subtext">Backend WebSocket URL. Leave empty to use default auto-detected backend.</span>
+                </div>
               </div>
 
               <div class="screen-action-row">
@@ -330,7 +355,7 @@ export class MenuController {
               </div>
 
               <!-- FFA Roster -->
-              <div id="lobby-ffa-roster" class="lobby-ffa-box hidden">
+              <div id="lobby-ffa-box" class="lobby-ffa-box hidden">
                 <div class="roster-header ffa">
                   <span>SOLO COMBATANTS (<span id="lobby-ffa-count">0</span>/10)</span>
                 </div>
@@ -436,11 +461,21 @@ export class MenuController {
       });
     }
 
+    // Dismiss Alert Banner
+    const btnAlertClose = document.getElementById('btn-menu-alert-close');
+    if (btnAlertClose) {
+      btnAlertClose.addEventListener('click', () => {
+        const banner = document.getElementById('menu-alert-banner');
+        if (banner) banner.classList.add('hidden');
+      });
+    }
+
     // Home Create Room
     const btnCreateLobby = document.getElementById('btn-create-lobby');
     if (btnCreateLobby) {
       btnCreateLobby.addEventListener('click', () => {
         if (this.onCreateRoom) {
+          this.setLobbyButtonLoading(true, 'CREATING ROOM...');
           this.onCreateRoom(this.username, 'TDM', this.selectedMapId);
         }
       });
@@ -453,9 +488,10 @@ export class MenuController {
       btnJoinRoom.addEventListener('click', () => {
         const code = inputJoinCode.value.trim().toUpperCase();
         if (code.length === 6 && this.onJoinRoom) {
+          this.setLobbyButtonLoading(true, 'JOINING ROOM...');
           this.onJoinRoom(code, this.username);
         } else {
-          alert('Please enter a valid 6-character room code.');
+          this.showErrorBanner('Please enter a valid 6-character room code.');
         }
       });
     }
@@ -503,6 +539,7 @@ export class MenuController {
     const setSens = document.getElementById('setting-sensitivity');
     const setGraph = document.getElementById('setting-graphics');
     const setShowFps = document.getElementById('setting-show-fps');
+    const setServer = document.getElementById('setting-server-url');
     const btnSaveSettings = document.getElementById('btn-settings-save');
     const btnResetSettings = document.getElementById('btn-settings-reset');
 
@@ -528,6 +565,15 @@ export class MenuController {
       btnSaveSettings.addEventListener('click', () => {
         this.settings.graphicsQuality = setGraph.value;
         this.settings.showFps = setShowFps.checked;
+        if (setServer) {
+          const val = setServer.value.trim();
+          this.customServerUrl = val;
+          if (val) {
+            localStorage.setItem('breachers_backend_ws_url', val);
+          } else {
+            localStorage.removeItem('breachers_backend_ws_url');
+          }
+        }
         localStorage.setItem('breachers_volume', this.settings.masterVolume);
         localStorage.setItem('breachers_sensitivity', this.settings.mouseSensitivity);
         localStorage.setItem('breachers_graphics', this.settings.graphicsQuality);
@@ -535,7 +581,7 @@ export class MenuController {
         if (this.onSettingsChanged) {
           this.onSettingsChanged(this.settings);
         }
-        alert('Settings applied and saved!');
+        this.showToast('Settings applied and saved!');
         this.navigateTo('HOME');
       });
     }
@@ -547,6 +593,9 @@ export class MenuController {
         setSens.value = '1.0';
         setGraph.value = 'high';
         setShowFps.checked = true;
+        if (setServer) setServer.value = '';
+        this.customServerUrl = '';
+        localStorage.removeItem('breachers_backend_ws_url');
         document.getElementById('label-volume-val').textContent = '80%';
         document.getElementById('label-sensitivity-val').textContent = '1.0x';
       });
@@ -823,6 +872,8 @@ export class MenuController {
     this.currentRoomState = roomState;
     this.localPlayerId = localPlayerId;
 
+    this.setLobbyButtonLoading(false);
+
     if (this.currentScreen !== 'LOBBY') {
       this.navigateTo('LOBBY');
     }
@@ -845,7 +896,11 @@ export class MenuController {
       mapDisplay.textContent = cfg.name.toUpperCase();
     }
 
-    const isHost = roomState.hostId === localPlayerId;
+    const isHost = Boolean(
+      (roomState.hostId && roomState.hostId === localPlayerId) ||
+      ((roomState.players || []).some(p => p.id === localPlayerId && p.isHost))
+    );
+
     if (btnStart) {
       btnStart.disabled = !isHost;
       btnStart.textContent = isHost ? 'START MATCH (HOST)' : 'WAITING FOR HOST TO START...';
@@ -885,6 +940,75 @@ export class MenuController {
     renderRoster(redPlayers, redList);
     renderRoster(bluePlayers, blueList);
     renderRoster(ffaPlayers, ffaList);
+  }
+
+  setLobbyButtonLoading(isLoading, label = 'CREATING ROOM...') {
+    const btn = document.getElementById('btn-create-lobby');
+    if (!btn) return;
+    if (isLoading) {
+      btn.disabled = true;
+      if (!btn.dataset.originalHtml) {
+        btn.dataset.originalHtml = btn.innerHTML;
+      }
+      btn.innerHTML = `
+        <span class="action-spinner"></span>
+        <div class="action-text">
+          <span class="action-primary">${label}</span>
+          <span class="action-sub">Connecting to multiplayer backend...</span>
+        </div>
+      `;
+      if (this.lobbyTimeout) clearTimeout(this.lobbyTimeout);
+      this.lobbyTimeout = setTimeout(() => {
+        if (btn && btn.disabled) {
+          this.setLobbyButtonLoading(false);
+          this.showErrorBanner('Multiplayer server connection taking longer than expected. If hosted on Render, please allow 30-45s for free-tier wake up, then try again.');
+        }
+      }, 18000);
+    } else {
+      if (this.lobbyTimeout) {
+        clearTimeout(this.lobbyTimeout);
+        this.lobbyTimeout = null;
+      }
+      btn.disabled = false;
+      if (btn.dataset.originalHtml) {
+        btn.innerHTML = btn.dataset.originalHtml;
+      }
+    }
+  }
+
+  showErrorBanner(message, durationMs = 8000) {
+    const banner = document.getElementById('menu-alert-banner');
+    const msgEl = document.getElementById('menu-alert-message');
+    if (!banner || !msgEl) return;
+    msgEl.textContent = message;
+    banner.classList.remove('hidden');
+    if (this.bannerTimeout) clearTimeout(this.bannerTimeout);
+    this.bannerTimeout = setTimeout(() => {
+      banner.classList.add('hidden');
+    }, durationMs);
+  }
+
+  showToast(message, durationMs = 3000) {
+    this.showErrorBanner(message, durationMs);
+  }
+
+  setNetworkStatus(status, url = '') {
+    const dot = document.getElementById('menu-server-dot');
+    const label = document.getElementById('menu-server-label');
+    const badge = document.getElementById('menu-server-status');
+    if (!dot || !label) return;
+
+    dot.className = 'status-dot ' + status;
+    if (status === 'connected') {
+      label.textContent = 'SERVER: ONLINE';
+      if (badge) badge.title = `Connected to: ${url}`;
+    } else if (status === 'connecting') {
+      label.textContent = 'SERVER: CONNECTING...';
+      if (badge) badge.title = `Connecting to: ${url}`;
+    } else {
+      label.textContent = 'SERVER: OFFLINE';
+      if (badge) badge.title = `Offline (${url})`;
+    }
   }
 
   showLoading(mapName, onComplete) {

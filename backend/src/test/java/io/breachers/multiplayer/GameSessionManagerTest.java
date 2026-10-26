@@ -3,6 +3,7 @@ package io.breachers.multiplayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.breachers.multiplayer.dto.ClientMessage;
 import io.breachers.multiplayer.dto.PlayerState;
+import io.breachers.multiplayer.dto.ServerMessage;
 import io.breachers.multiplayer.model.*;
 import io.breachers.multiplayer.service.GameSessionManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -250,6 +251,22 @@ class GameSessionManagerTest {
         assertTrue(room.getRoomCode().matches("^[A-Z0-9]{6}$"), "Room code must be 6 alphanumeric chars");
         assertEquals(GameMode.TDM, room.getMode());
         assertEquals(1, room.getPlayerCount());
+    }
+
+    @Test
+    void shouldCreateRoomDirectlyFromRawSessionWithHostAssigned() {
+        TestWebSocketSession stub = new TestWebSocketSession("socket-raw-host");
+        GameRoom room = sessionManager.createRoom(stub, "RawHost", "TDM");
+
+        assertNotNull(room);
+        assertNotNull(room.getHostPlayerId());
+        assertEquals(1, room.getPlayerCount());
+        PlayerSession hostPlayer = room.getPlayers().iterator().next();
+        assertEquals(room.getHostPlayerId(), hostPlayer.getPlayerId());
+
+        ServerMessage.RoomState roomState = room.buildRoomStateMessage();
+        assertEquals(hostPlayer.getPlayerId(), roomState.hostId());
+        assertTrue(roomState.players().get(0).isHost());
     }
 
     @Test

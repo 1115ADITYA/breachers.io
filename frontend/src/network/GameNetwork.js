@@ -5,22 +5,74 @@
  * combat messaging, private rooms, team assignments, and match lifecycle.
  */
 export class GameNetwork {
-  constructor(options = {}) {
-    // Environment-based WebSocket configuration (Priority: options.url > VITE_WS_URL > local auto-detection)
+  static normalizeWsUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    let clean = url.trim();
+    // Convert HTTP(S) to WS(S)
+    if (clean.startsWith('https://')) {
+      clean = 'wss://' + clean.slice(8);
+    } else if (clean.startsWith('http://')) {
+      clean = 'ws://' + clean.slice(7);
+    } else if (!clean.startsWith('ws://') && !clean.startsWith('wss://')) {
+      clean = 'wss://' + clean;
+    }
+    // Remove trailing slashes
+    clean = clean.replace(/\/+$/, '');
+    // Ensure /ws/game path is present if path was omitted
+    if (!clean.endsWith('/ws/game')) {
+      if (clean.endsWith('/ws')) {
+        clean = clean + '/game';
+      } else {
+        clean = clean + '/ws/game';
+      }
+    }
+    return clean;
+  }
+
+  static resolveWebSocketUrl(customUrl = null) {
+    // 1. Explicit option passed
+    if (customUrl) return GameNetwork.normalizeWsUrl(customUrl);
+
+    // 2. User-configured override in localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const stored = window.localStorage.getItem('breachers_backend_ws_url');
+        if (stored && stored.trim()) return GameNetwork.normalizeWsUrl(stored.trim());
+      } catch (e) {
+        // Ignore localStorage access errors
+      }
+    }
+
+    // 3. Vite environment variable VITE_WS_URL
     const envWsUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL)
       ? import.meta.env.VITE_WS_URL
       : null;
-
-    if (options.url) {
-      this.url = options.url;
-    } else if (envWsUrl) {
-      this.url = envWsUrl;
-    } else {
-      const defaultHost = (typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'localhost';
-      const defaultPort = '8081';
-      const protocol = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'wss:' : 'ws:';
-      this.url = `${protocol}//${defaultHost}:${defaultPort}/ws/game`;
+    if (envWsUrl && envWsUrl.trim()) {
+      return GameNetwork.normalizeWsUrl(envWsUrl.trim());
     }
+
+    // 4. Host-aware auto-detection
+    if (typeof window !== 'undefined' && window.location) {
+      const host = window.location.hostname;
+      const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.startsWith('192.168.') || host.endsWith('.local');
+      if (!isLocal) {
+        // Hosted on Vercel or cloud provider: default to live Render backend
+        console.info('[GameNetwork] Running on production host without explicit VITE_WS_URL. Falling back to default cloud backend.');
+        return 'wss://breachers-backend.onrender.com/ws/game';
+      }
+
+      // Local development fallback
+      const defaultPort = '8081';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${host}:${defaultPort}/ws/game`;
+    }
+
+    return 'ws://localhost:8081/ws/game';
+  }
+
+  constructor(options = {}) {
+    this.url = GameNetwork.resolveWebSocketUrl(options.url);
+    console.log(`[GameNetwork] Initialized with endpoint: ${this.url}`);
 
     this.socket = null;
     this.isConnected = false;
@@ -28,7 +80,6 @@ export class GameNetwork {
     this.localPlayerId = null;
     this.localUsername = null;
     this.currentRoomCode = null;
-
 
     // Transmission Rate Limiting: 20 updates per second (50ms interval)
     this.updateIntervalMs = 50;
@@ -78,9 +129,24 @@ export class GameNetwork {
     return this.localPlayerId;
   }
 
+  setUrl(newUrl) {
+    const normalized = GameNetwork.normalizeWsUrl(newUrl);
+    if (normalized && normalized !== this.url) {
+      this.url = normalized;
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('breachers_backend_ws_url', normalized);
+      }
+      if (this.isConnected || this.isConnecting) {
+        this.disconnect();
+      }
+    }
+  }
+
   connect(username = 'Operator', initialAction = null) {
     this.localUsername = username;
-    this.pendingAction = initialAction;
+    if (initialAction) {
+      this.pendingAction = initialAction;
+    }
 
     if (this.socket && (this.isConnected || this.isConnecting)) {
       if (this.pendingAction && this.isConnected) {
@@ -93,16 +159,18 @@ export class GameNetwork {
     this.notifyStatus('connecting');
 
     try {
+      console.log(`[GameNetwork] Connecting to WebSocket at: ${this.url}`);
       this.socket = new WebSocket(this.url);
     } catch (err) {
-      console.error('GameNetwork: Failed to instantiate WebSocket:', err);
+      console.error('[GameNetwork] Failed to instantiate WebSocket:', err);
       this.isConnecting = false;
       this.notifyStatus('error');
-      if (this.onError) this.onError(err.message);
+      if (this.onError) this.onError(err.message || 'WebSocket instantiation error');
       return;
     }
 
     this.socket.onopen = () => {
+      console.log(`[GameNetwork] Connected successfully to ${this.url}`);
       this.isConnected = true;
       this.isConnecting = false;
       this.notifyStatus('connected');
@@ -123,9 +191,11 @@ export class GameNetwork {
     };
 
     this.socket.onerror = (err) => {
-      console.error('GameNetwork: WebSocket transport error:', err);
+      console.error('[GameNetwork] WebSocket transport error at:', this.url, err);
       this.notifyStatus('error');
-      if (this.onError) this.onError('WebSocket connection error');
+      if (this.onError) {
+        this.onError(`Failed to connect to multiplayer server at ${this.url}. If hosted on Render, the free-tier service may be waking up (takes ~30-45s) or check Vercel environment variables.`);
+      }
     };
 
     this.socket.onclose = (event) => {

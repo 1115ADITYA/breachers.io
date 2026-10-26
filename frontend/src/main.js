@@ -307,15 +307,9 @@ const menuController = new MenuController({
     deployIntoMatch(selectedMapId, username);
   },
   onCreateRoom: (username, mode, selectedMapId) => {
-    if (!gameNetwork.isConnected && !gameNetwork.isConnecting) {
-      gameNetwork.connect(username);
-    }
     gameNetwork.createRoom(username, mode);
   },
   onJoinRoom: (code, username) => {
-    if (!gameNetwork.isConnected && !gameNetwork.isConnecting) {
-      gameNetwork.connect(username);
-    }
     gameNetwork.joinRoom(code, username);
   },
   onLeaveRoom: () => {
@@ -335,6 +329,10 @@ const menuController = new MenuController({
   },
   onSettingsChanged: (newSettings) => {
     applySettings(newSettings);
+    const customUrl = localStorage.getItem('breachers_backend_ws_url');
+    if (customUrl && customUrl !== gameNetwork.url) {
+      gameNetwork.setUrl(customUrl);
+    }
   }
 });
 
@@ -438,6 +436,7 @@ function returnToLobby() {
 // -------------------------------------------------------------
 gameNetwork.onStatusChange = (status, playerId) => {
   hud.setNetworkStatus(status, playerId);
+  menuController.setNetworkStatus(status, gameNetwork.url);
 };
 
 gameNetwork.onPlayerCountChange = (count) => {
@@ -447,6 +446,7 @@ gameNetwork.onPlayerCountChange = (count) => {
 gameNetwork.onWelcome = (welcomeMsg) => {
   console.log(`[Multiplayer] Welcomed by server as ${welcomeMsg.username} (${welcomeMsg.playerId})`);
   hud.setNetworkStatus('connected', welcomeMsg.playerId);
+  menuController.setNetworkStatus('connected', gameNetwork.url);
 
   // Position local player at safe spawn point
   if (player && appState === 'GAMEPLAY') {
@@ -487,7 +487,11 @@ gameNetwork.onPlayerLeft = (leftData) => {
 
 gameNetwork.onError = (errMsg) => {
   console.warn(`[Multiplayer] Error: ${errMsg}`);
-  hud.showError(errMsg);
+  menuController.setLobbyButtonLoading(false);
+  menuController.showErrorBanner(errMsg);
+  if (hud && hud.showError) {
+    hud.showError(errMsg);
+  }
 };
 
 // Combat Networking Event Routing

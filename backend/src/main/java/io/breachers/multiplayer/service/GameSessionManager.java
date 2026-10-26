@@ -163,8 +163,11 @@ public class GameSessionManager {
         roomsByCode.put(roomCode, room);
 
         PlayerSession player = registerPlayerInternal(rawSession, username, roomCode);
-        room.setHostPlayerId(player.getPlayerId());
-        log.info("Private room created: code={}, host={}, mode={}", roomCode, player.getUsername(), mode);
+        if (player != null) {
+            room.setHostPlayerId(player.getPlayerId());
+            broadcastToRoom(room.getRoomCode(), room.buildRoomStateMessage(), null);
+        }
+        log.info("Private room created: code={}, host={}, mode={}", roomCode, player != null ? player.getUsername() : "unknown", mode);
         return room;
     }
 
