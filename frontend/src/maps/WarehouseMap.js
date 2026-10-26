@@ -122,6 +122,9 @@ export class WarehouseMap {
         : '/';
       const assetUrl = `${base.replace(/\/$/, '')}/assets/maps/warehouse.glb`;
 
+      console.log(`[WarehouseMap] Starting load for GLB asset from: ${assetUrl}`);
+      const loader = new GLTFLoader();
+
       loader.load(
         assetUrl,
         (gltf) => {
@@ -132,6 +135,14 @@ export class WarehouseMap {
             model.rotation.y = Math.PI / 2;
             model.scale.set(this.modelScale, this.modelScale, this.modelScale);
             model.updateMatrixWorld(true);
+
+            // Compute and diagnose model bounding box
+            const bbox = new THREE.Box3().setFromObject(model);
+            const size = new THREE.Vector3();
+            const center = new THREE.Vector3();
+            bbox.getSize(size);
+            bbox.getCenter(center);
+            console.log(`[WarehouseMap] Model loaded successfully: Bounding Box Size: [${size.x.toFixed(1)}, ${size.y.toFixed(1)}, ${size.z.toFixed(1)}], Center: [${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)}]`);
 
             // Configure shadow casting and receiving
             model.traverse((child) => {
@@ -151,7 +162,7 @@ export class WarehouseMap {
             this.buildColliders(model, this.physicsWorld);
 
             this.isLoaded = true;
-            console.log(`[WarehouseMap] Successfully loaded model and generated ${this.colliders.length} colliders (Physics: ${this.physicsWorld?.isReady ? 'Rapier3D Active' : 'AABB Fallback'})`);
+            console.log(`[WarehouseMap] Successfully mounted model to map group and generated ${this.colliders.length} colliders (Physics: ${this.physicsWorld?.isReady ? 'Rapier3D Active' : 'AABB Fallback'})`);
             resolve(this);
           } catch (err) {
             console.error('[WarehouseMap] Error configuring loaded model:', err);
@@ -166,9 +177,10 @@ export class WarehouseMap {
           }
         },
         (err) => {
-          console.error('[WarehouseMap] Failed to load GLB asset at ' + assetUrl, err);
+          const errMsg = err?.message || err;
+          console.error(`[WarehouseMap] Failed to load GLB asset at "${assetUrl}":`, err);
           this.loadError = err;
-          reject(err);
+          reject(new Error(`Failed to load Warehouse GLB model from ${assetUrl}: ${errMsg}`));
         }
       );
     });

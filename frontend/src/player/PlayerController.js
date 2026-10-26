@@ -124,14 +124,19 @@ export class PlayerController {
   }
 
   spawnAt(x, y, z, rotationY = 0) {
-    this.position.set(x, y, z);
-    this.yaw = rotationY;
+    const safeX = (typeof x === 'number' && !isNaN(x)) ? x : 0;
+    const safeY = (typeof y === 'number' && !isNaN(y)) ? y : 0;
+    const safeZ = (typeof z === 'number' && !isNaN(z)) ? z : 0;
+    const safeRot = (typeof rotationY === 'number' && !isNaN(rotationY)) ? rotationY : 0;
+
+    this.position.set(safeX, safeY, safeZ);
+    this.yaw = safeRot;
     this.pitch = 0;
     this.velocity.set(0, 0, 0);
     this.setDead(false);
     this.applySpawnProtection(5000); // 5-second mandatory spawn protection on every spawn
     if (this.physicsWorld && this.physicsWorld.isReady) {
-      this.physicsWorld.setPlayerPosition(x, y, z);
+      this.physicsWorld.setPlayerPosition(safeX, safeY, safeZ);
     }
     this.updateCamera();
   }
@@ -459,6 +464,15 @@ export class PlayerController {
   }
 
   updateCamera() {
+    if (isNaN(this.position.x) || isNaN(this.position.y) || isNaN(this.position.z)) {
+      console.error('[PlayerController] Corrupted position detected (NaN). Resetting to safe origin.');
+      this.position.set(0, 0, 0);
+    }
+    if (isNaN(this.pitch) || isNaN(this.yaw)) {
+      this.pitch = 0;
+      this.yaw = 0;
+    }
+
     this.camera.position.set(
       this.position.x,
       this.position.y + this.eyeHeight,

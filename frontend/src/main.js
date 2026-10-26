@@ -47,14 +47,25 @@ const camera = new THREE.PerspectiveCamera(
   1000
 );
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-container.appendChild(renderer.domElement);
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  container.appendChild(renderer.domElement);
+
+  renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    console.error('[Renderer] WebGL graphics context was lost! Refresh the browser to restore rendering.');
+  });
+  console.log('[Renderer] Three.js WebGLRenderer initialized successfully.');
+} catch (err) {
+  console.error('[Renderer] Fatal error initializing WebGLRenderer:', err);
+}
 
 // -------------------------------------------------------------
 // 2. Environmental Lighting
@@ -160,6 +171,8 @@ async function loadMap(mapId, onProgress = null) {
     return;
   }
 
+  console.log(`[MapLoader] Loading map: ${mapId}`);
+
   // Remove existing map from scene
   if (currentMap) {
     scene.remove(currentMap.getMesh());
@@ -176,8 +189,22 @@ async function loadMap(mapId, onProgress = null) {
 
   if (mapId === 'warehouse') {
     const warehouse = new WarehouseMap();
-    await warehouse.load(onProgress, physicsWorld);
-    currentMap = warehouse;
+    try {
+      await warehouse.load(onProgress, physicsWorld);
+      currentMap = warehouse;
+    } catch (err) {
+      console.error(`[MapLoader] Failed to load 3D Warehouse map ("${mapId}"):`, err);
+      console.warn('[MapLoader] Reverting to Container Yard procedural fallback map.');
+      if (hud && hud.showError) {
+        hud.showError(`Failed to load Warehouse 3D map (${err.message || 'Asset Error'}). Reverted to Container Yard.`);
+      }
+      currentMapId = 'container_yard';
+      currentMap = new ContainerYardMap();
+      if (currentMap.initPhysics) {
+        currentMap.initPhysics(physicsWorld);
+      }
+      if (onProgress) onProgress(100);
+    }
   } else {
     currentMap = new ContainerYardMap();
     if (currentMap.initPhysics) {
@@ -548,22 +575,42 @@ gameNetwork.onMatchStarted = async (data) => {
   console.log(`[Match] Started in room ${data.roomCode} (${data.mode})`);
   hud.setPaused(false);
 
-  // Deploy into selected map
+  // Deploy into selected map safely
   const selectedMapId = menuController.getSelectedMapId();
-  await loadMap(selectedMapId);
+  try {
+    await loadMap(selectedMapId);
+  } catch (err) {
+    console.error('[Match] Error loading map on match start:', err);
+    await loadMap('container_yard');
+  }
 
   menuController.hideMenu();
   hud.show();
   player.setEnabled(true);
 
-  if (currentMapId === 'warehouse') {
-    const team = (data.team || 'red').toLowerCase();
-    const spawn = currentMap.getRandomSpawn(team);
-    player.spawnAt(spawn.x, spawn.y, spawn.z, spawn.rotationY);
-  } else {
-    player.spawnAt(data.x, data.y, data.z, data.yaw);
+  // Determine safe spawn coordinates from payload or active map
+  const team = (data.team || player.team || 'red').toLowerCase();
+  let spawnX = data.x;
+  let spawnY = data.y;
+  let spawnZ = data.z;
+  let spawnYaw = data.yaw;
+
+  if (spawnX === undefined || spawnY === undefined || spawnZ === undefined || isNaN(spawnX) || isNaN(spawnY) || isNaN(spawnZ)) {
+    if (currentMap && currentMap.getRandomSpawn) {
+      const mapSpawn = currentMap.getRandomSpawn(team);
+      spawnX = mapSpawn.x;
+      spawnY = mapSpawn.y;
+      spawnZ = mapSpawn.z;
+      spawnYaw = mapSpawn.rotationY || 0;
+    } else {
+      spawnX = 0;
+      spawnY = 0;
+      spawnZ = 0;
+      spawnYaw = 0;
+    }
   }
 
+  player.spawnAt(spawnX, spawnY, spawnZ, spawnYaw);
   player.requestLock();
   hud.updateHealth(100);
   weapon.selectWeapon(0);
