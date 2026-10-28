@@ -162,10 +162,26 @@ export class PlayerController {
     }
   }
 
+  setMouseSensitivity(sens) {
+    if (typeof sens === 'number' && !isNaN(sens) && sens > 0) {
+      this.mouseSensitivity = Math.max(0.0005, Math.min(0.01, sens));
+    }
+  }
+
   initEventListeners() {
     // Pointer Lock change listener
     document.addEventListener('pointerlockchange', () => {
       this.isLocked = document.pointerLockElement === this.domElement;
+      if (!this.isLocked) {
+        // Reset all movement and firing flags so character immediately halts
+        this.keys.forward = false;
+        this.keys.backward = false;
+        this.keys.left = false;
+        this.keys.right = false;
+        this.keys.jump = false;
+        this.keys.sprint = false;
+        this.isMouseDown = false;
+      }
       if (this.hud && this.enabled) {
         this.hud.setPaused(!this.isLocked);
       }
@@ -186,6 +202,10 @@ export class PlayerController {
     // Mouse click for shooting or acquiring pointer lock
     this.domElement.addEventListener('mousedown', (e) => {
       if (!this.enabled) return;
+      // If currently paused in tactical pause menu, do not automatically re-lock on canvas click
+      if (this.hud && (this.hud.isPaused || (this.hud.tacticalPauseModal && !this.hud.tacticalPauseModal.classList.contains('hidden')))) {
+        return;
+      }
       if (!this.isLocked) {
         this.requestLock();
         return;
@@ -212,6 +232,14 @@ export class PlayerController {
     // Keyboard controls
     window.addEventListener('keydown', (e) => {
       if (!this.enabled || this.isDead) return;
+
+      if (e.code === 'Escape') {
+        if (!this.isLocked) {
+          e.preventDefault();
+          this.requestLock();
+          return;
+        }
+      }
 
       switch (e.code) {
         case 'KeyW':

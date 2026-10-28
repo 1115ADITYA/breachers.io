@@ -14,6 +14,8 @@ export class HUD {
     this.onSetTeam = options.onSetTeam || null;
     this.onStartMatch = options.onStartMatch || null;
     this.onReturnToLobby = options.onReturnToLobby || null;
+    this.onSensitivityChange = options.onSensitivityChange || null;
+    this.onVolumeChange = options.onVolumeChange || null;
 
     this.container = document.getElementById('hud-overlay');
 
@@ -26,6 +28,7 @@ export class HUD {
     this.deathCountdownInterval = null;
     this.currentRoomState = null;
     this.localPlayerId = null;
+    this.isPaused = false;
 
     this.initHUD();
   }
@@ -257,6 +260,76 @@ export class HUD {
         </div>
       </div>
 
+      <!-- Dedicated In-Game Tactical Pause Modal -->
+      <div id="tactical-pause-modal" class="tactical-pause-modal hidden">
+        <div class="tactical-pause-card">
+          <div class="pause-card-header">
+            <div class="pause-top-badge"><span class="pulse-indicator"></span> TACTICAL SYSTEM // COMBAT SUSPENDED</div>
+            <h2 class="pause-headline">MISSION PAUSED</h2>
+            <div class="pause-meta-chips">
+              <div class="pause-meta-chip">
+                <span class="chip-label">ROOM:</span>
+                <span id="pause-room-code" class="chip-val">------</span>
+                <button id="btn-pause-copy-code" class="btn-chip-copy" type="button" title="Copy Room Code">COPY</button>
+              </div>
+              <div class="pause-meta-chip">
+                <span class="chip-label">MODE:</span>
+                <span id="pause-game-mode" class="chip-val">TDM</span>
+              </div>
+              <div class="pause-meta-chip">
+                <span class="chip-label">STATUS:</span>
+                <span class="chip-val status-live">ACTIVE MATCH</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pause-card-body">
+            <!-- Big Primary Resume Button -->
+            <button id="btn-pause-resume" class="btn-pause-resume" type="button">
+              <span class="btn-pause-icon">▶</span>
+              <div class="btn-pause-content">
+                <span class="btn-pause-title">RESUME COMBAT</span>
+                <span class="btn-pause-hint">PRESS ESCAPE OR CLICK TO RE-ENGAGE POINTER LOCK</span>
+              </div>
+            </button>
+
+            <!-- Mid-match Live Sliders -->
+            <div class="pause-controls-panel">
+              <div class="pause-control-row">
+                <div class="pause-control-label">
+                  <span>AIM SENSITIVITY</span>
+                  <span id="pause-sens-val" class="ctrl-metric">0.0022</span>
+                </div>
+                <input type="range" id="pause-sens-slider" min="0.0005" max="0.0060" step="0.0001" value="0.0022" class="pause-slider" />
+              </div>
+              <div class="pause-control-row">
+                <div class="pause-control-label">
+                  <span>SFX VOLUME</span>
+                  <span id="pause-vol-val" class="ctrl-metric">80%</span>
+                </div>
+                <input type="range" id="pause-vol-slider" min="0" max="100" step="5" value="80" class="pause-slider" />
+              </div>
+            </div>
+
+            <!-- Abort / Leave Match Section -->
+            <div class="pause-abort-section">
+              <button id="btn-pause-leave" class="btn-pause-abort" type="button">
+                <span class="btn-abort-icon">⚠</span>
+                <span>ABORT MISSION (RETURN TO LOBBY)</span>
+              </button>
+
+              <div id="pause-leave-confirm-box" class="pause-confirm-box hidden">
+                <p class="pause-confirm-text">Are you sure you want to leave the active room? Your operative will disconnect from this match.</p>
+                <div class="pause-confirm-actions">
+                  <button id="btn-pause-confirm-leave" class="btn-confirm-abort" type="button">YES, LEAVE ROOM</button>
+                  <button id="btn-pause-cancel-leave" class="btn-cancel-abort" type="button">CANCEL / STAY IN MATCH</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Tactical Pause / Lobby / Deploy Screen -->
       <div id="pause-screen" class="pause-screen hidden">
         <div class="pause-card">
@@ -402,6 +475,19 @@ export class HUD {
 
     this.fpsCounter = document.getElementById('fps-counter');
     this.pauseScreen = document.getElementById('pause-screen');
+    this.tacticalPauseModal = document.getElementById('tactical-pause-modal');
+    this.pauseRoomCode = document.getElementById('pause-room-code');
+    this.pauseGameMode = document.getElementById('pause-game-mode');
+    this.btnPauseCopyCode = document.getElementById('btn-pause-copy-code');
+    this.btnPauseResume = document.getElementById('btn-pause-resume');
+    this.pauseSensSlider = document.getElementById('pause-sens-slider');
+    this.pauseSensVal = document.getElementById('pause-sens-val');
+    this.pauseVolSlider = document.getElementById('pause-vol-slider');
+    this.pauseVolVal = document.getElementById('pause-vol-val');
+    this.btnPauseLeave = document.getElementById('btn-pause-leave');
+    this.pauseLeaveConfirmBox = document.getElementById('pause-leave-confirm-box');
+    this.btnPauseConfirmLeave = document.getElementById('btn-pause-confirm-leave');
+    this.btnPauseCancelLeave = document.getElementById('btn-pause-cancel-leave');
     this.inputUsername = document.getElementById('input-username');
     this.netStatusBadge = document.getElementById('net-status-badge');
     this.netStatusText = document.getElementById('net-status-text');
@@ -527,6 +613,95 @@ export class HUD {
       this.matchEndOverlay.classList.add('hidden');
       if (this.onReturnToLobby) this.onReturnToLobby();
     });
+
+    // In-Game Tactical Pause Listeners
+    if (this.btnPauseResume) {
+      this.btnPauseResume.addEventListener('click', () => {
+        this.setPaused(false);
+        if (this.onPlayClick) this.onPlayClick();
+      });
+    }
+
+    if (this.btnPauseCopyCode) {
+      this.btnPauseCopyCode.addEventListener('click', () => {
+        const code = (this.currentRoomState && this.currentRoomState.roomCode) || '';
+        if (code) {
+          navigator.clipboard.writeText(code).then(() => {
+            this.btnPauseCopyCode.textContent = 'COPIED!';
+            setTimeout(() => {
+              this.btnPauseCopyCode.textContent = 'COPY';
+            }, 1500);
+          });
+        }
+      });
+    }
+
+    if (this.pauseSensSlider) {
+      const savedSens = localStorage.getItem('breachers_sensitivity');
+      if (savedSens) {
+        this.pauseSensSlider.value = savedSens;
+        if (this.pauseSensVal) this.pauseSensVal.textContent = parseFloat(savedSens).toFixed(4);
+      }
+      this.pauseSensSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (this.pauseSensVal) this.pauseSensVal.textContent = val.toFixed(4);
+        localStorage.setItem('breachers_sensitivity', val.toString());
+        if (this.onSensitivityChange) this.onSensitivityChange(val);
+      });
+    }
+
+    if (this.pauseVolSlider) {
+      const savedVol = localStorage.getItem('breachers_sfx_volume');
+      if (savedVol) {
+        this.pauseVolSlider.value = Math.round(parseFloat(savedVol) * 100);
+        if (this.pauseVolVal) this.pauseVolVal.textContent = `${this.pauseVolSlider.value}%`;
+      }
+      this.pauseVolSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (this.pauseVolVal) this.pauseVolVal.textContent = `${val}%`;
+        localStorage.setItem('breachers_sfx_volume', (val / 100).toString());
+        if (this.onVolumeChange) this.onVolumeChange(val / 100);
+      });
+    }
+
+    if (this.btnPauseLeave) {
+      this.btnPauseLeave.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (this.pauseLeaveConfirmBox) {
+          const isCurrentlyHidden = this.pauseLeaveConfirmBox.classList.contains('hidden');
+          if (isCurrentlyHidden) {
+            this.pauseLeaveConfirmBox.classList.remove('hidden');
+          } else {
+            // Already showing confirm box; clicking again confirms abort
+            this.setPaused(false);
+            if (this.onLeaveRoom) this.onLeaveRoom();
+          }
+        } else {
+          this.setPaused(false);
+          if (this.onLeaveRoom) this.onLeaveRoom();
+        }
+      });
+    }
+
+    if (this.btnPauseConfirmLeave) {
+      this.btnPauseConfirmLeave.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.setPaused(false);
+        if (this.onLeaveRoom) this.onLeaveRoom();
+      });
+    }
+
+    if (this.btnPauseCancelLeave) {
+      this.btnPauseCancelLeave.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (this.pauseLeaveConfirmBox) {
+          this.pauseLeaveConfirmBox.classList.add('hidden');
+        }
+      });
+    }
   }
 
   showError(msg) {
@@ -695,10 +870,27 @@ export class HUD {
   }
 
   setPaused(isPaused) {
-    if (isPaused) {
-      this.pauseScreen.classList.remove('hidden');
+    this.isPaused = Boolean(isPaused);
+    if (this.isPaused) {
+      if (this.pauseRoomCode) {
+        this.pauseRoomCode.textContent = (this.currentRoomState && this.currentRoomState.roomCode) || 'PUBLIC';
+      }
+      if (this.pauseGameMode) {
+        this.pauseGameMode.textContent = (this.currentRoomState && this.currentRoomState.gameMode) || 'TDM';
+      }
+      if (this.pauseLeaveConfirmBox) {
+        this.pauseLeaveConfirmBox.classList.add('hidden');
+      }
+      if (this.tacticalPauseModal) {
+        this.tacticalPauseModal.classList.remove('hidden');
+      }
     } else {
-      this.pauseScreen.classList.add('hidden');
+      if (this.tacticalPauseModal) {
+        this.tacticalPauseModal.classList.add('hidden');
+      }
+      if (this.pauseLeaveConfirmBox) {
+        this.pauseLeaveConfirmBox.classList.add('hidden');
+      }
     }
   }
 
@@ -907,6 +1099,7 @@ export class HUD {
   }
 
   hide() {
+    this.setPaused(false);
     if (this.container) {
       this.container.classList.add('hidden');
     }

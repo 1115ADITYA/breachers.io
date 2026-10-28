@@ -287,6 +287,34 @@ public class MatchPersistenceService {
         return stats;
     }
 
+    /**
+     * Demonstrates pure raw JDBC database querying using java.sql.Connection,
+     * java.sql.PreparedStatement, and java.sql.ResultSet.
+     */
+    public List<Map<String, Object>> executeRawJdbcQuery(String sql, Object... params) throws SQLException {
+        List<Map<String, Object>> results = new ArrayList<>();
+        if (jdbcTemplate.getDataSource() == null) return results;
+
+        try (java.sql.Connection conn = jdbcTemplate.getDataSource().getConnection();
+             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.length; i++) {
+                stmt.setObject(i + 1, params[i]);
+            }
+            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                java.sql.ResultSetMetaData meta = rs.getMetaData();
+                int colCount = meta.getColumnCount();
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int c = 1; c <= colCount; c++) {
+                        row.put(meta.getColumnLabel(c), rs.getObject(c));
+                    }
+                    results.add(row);
+                }
+            }
+        }
+        return results;
+    }
+
     private static class MatchSummaryRowMapper implements RowMapper<MatchSummary> {
         @Override
         public MatchSummary mapRow(ResultSet rs, int rowNum) throws SQLException {

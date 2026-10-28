@@ -216,40 +216,112 @@ export class MenuPreviewScene {
     torso.castShadow = true;
     this.operatorGroup.add(torso);
 
+    // Ceramic plate insert
     const plateGeo = new THREE.BoxGeometry(0.57, 0.48, 0.35);
     const plate = new THREE.Mesh(plateGeo, this.materials.vest);
     plate.position.y = 1.17;
     plate.castShadow = true;
     this.operatorGroup.add(plate);
 
-    // Ammo Mag Pouches
+    // Front Chest Molle Webbing & Triple Mag Pouches
     for (let i = -1; i <= 1; i++) {
       const pouchGeo = new THREE.BoxGeometry(0.12, 0.18, 0.08);
       const pouch = new THREE.Mesh(pouchGeo, this.materials.dark);
       pouch.position.set(i * 0.15, 1.05, 0.20);
       this.operatorGroup.add(pouch);
+
+      // Mag retention pull tab
+      const tabGeo = new THREE.BoxGeometry(0.06, 0.04, 0.09);
+      const tab = new THREE.Mesh(tabGeo, this.materials.accent);
+      tab.position.set(i * 0.15, 1.15, 0.20);
+      this.operatorGroup.add(tab);
     }
 
-    // 2. Head & Combat Helmet
+    // Shoulder Comms Radio & Tactical Antenna
+    const radioGeo = new THREE.BoxGeometry(0.09, 0.14, 0.08);
+    const radio = new THREE.Mesh(radioGeo, this.materials.dark);
+    radio.position.set(-0.24, 1.42, 0.12);
+    this.operatorGroup.add(radio);
+
+    const antennaGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.26, 6);
+    const antenna = new THREE.Mesh(antennaGeo, this.materials.dark);
+    antenna.position.set(-0.26, 1.57, 0.12);
+    antenna.rotation.z = -0.08;
+    this.operatorGroup.add(antenna);
+
+    // Tactical Duty Belt & Buckle
+    const beltGeo = new THREE.BoxGeometry(0.58, 0.10, 0.34);
+    const belt = new THREE.Mesh(beltGeo, this.materials.dark);
+    belt.position.y = 0.82;
+    this.operatorGroup.add(belt);
+
+    const buckleGeo = new THREE.BoxGeometry(0.12, 0.08, 0.36);
+    const buckle = new THREE.Mesh(buckleGeo, this.materials.accent);
+    buckle.position.y = 0.82;
+    this.operatorGroup.add(buckle);
+
+    // Drop-Leg Pistol Holster on Right Thigh
+    const holsterGeo = new THREE.BoxGeometry(0.10, 0.20, 0.12);
+    const holster = new THREE.Mesh(holsterGeo, this.materials.dark);
+    holster.position.set(0.28, 0.65, 0.04);
+    holster.rotation.z = -0.05;
+    this.operatorGroup.add(holster);
+
+    // 2. Head, Balaclava & Combat Helmet
     const headGeo = new THREE.BoxGeometry(0.28, 0.30, 0.28);
     const head = new THREE.Mesh(headGeo, this.materials.skin);
     head.position.y = 1.62;
     head.castShadow = true;
     this.operatorGroup.add(head);
 
+    // Tactical Balaclava / Neck Gaiter
+    const neckGeo = new THREE.BoxGeometry(0.24, 0.14, 0.24);
+    const neck = new THREE.Mesh(neckGeo, this.materials.vest);
+    neck.position.y = 1.48;
+    this.operatorGroup.add(neck);
+
+    // Ballistic Helmet with Top Tactical Rail
     const helmetGeo = new THREE.BoxGeometry(0.33, 0.22, 0.33);
     const helmet = new THREE.Mesh(helmetGeo, this.materials.armor);
     helmet.position.set(0, 1.70, 0);
     helmet.castShadow = true;
     this.operatorGroup.add(helmet);
 
-    // Visor with glowing HUD effect
+    const helmetRailGeo = new THREE.BoxGeometry(0.08, 0.04, 0.30);
+    const helmetRail = new THREE.Mesh(helmetRailGeo, this.materials.dark);
+    helmetRail.position.set(0, 1.82, 0);
+    this.operatorGroup.add(helmetRail);
+
+    // Front NVG Mount Shroud
+    const nvgMountGeo = new THREE.BoxGeometry(0.10, 0.08, 0.04);
+    const nvgMount = new THREE.Mesh(nvgMountGeo, this.materials.dark);
+    nvgMount.position.set(0, 1.74, 0.18);
+    this.operatorGroup.add(nvgMount);
+
+    // Comms Headset (Left & Right Earcups + Boom Mic)
+    const commsCupGeo = new THREE.BoxGeometry(0.06, 0.12, 0.09);
+    const commsLeft = new THREE.Mesh(commsCupGeo, this.materials.dark);
+    commsLeft.position.set(-0.17, 1.64, 0);
+    this.operatorGroup.add(commsLeft);
+
+    const commsRight = new THREE.Mesh(commsCupGeo, this.materials.dark);
+    commsRight.position.set(0.17, 1.64, 0);
+    this.operatorGroup.add(commsRight);
+
+    const micBoomGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.14, 6);
+    const micBoom = new THREE.Mesh(micBoomGeo, this.materials.dark);
+    micBoom.rotation.z = Math.PI / 3;
+    micBoom.rotation.x = Math.PI / 4;
+    micBoom.position.set(-0.16, 1.56, 0.10);
+    this.operatorGroup.add(micBoom);
+
+    // Ballistic Visor with Cyberpunk Glow & Edge Refraction
     const visorGeo = new THREE.BoxGeometry(0.29, 0.09, 0.06);
     const visor = new THREE.Mesh(visorGeo, this.materials.visor);
     visor.position.set(0, 1.62, 0.15);
     this.operatorGroup.add(visor);
 
-    // 3. Arms & Shoulders
+    // 3. Arms & Tactical Grip
     const shoulderPadGeo = new THREE.BoxGeometry(0.18, 0.16, 0.22);
     const leftPad = new THREE.Mesh(shoulderPadGeo, this.materials.armor);
     leftPad.position.set(-0.36, 1.40, 0);
@@ -259,20 +331,19 @@ export class MenuPreviewScene {
     rightPad.position.set(0.36, 1.40, 0);
     this.operatorGroup.add(rightPad);
 
+    // Forearms with tactical cuffs
     const armGeo = new THREE.BoxGeometry(0.14, 0.55, 0.16);
     const leftArm = new THREE.Mesh(armGeo, this.materials.vest);
-    leftArm.position.set(-0.35, 1.10, 0.05);
-    leftArm.rotation.x = -0.35;
-    leftArm.rotation.z = 0.15;
+    leftArm.position.set(-0.25, 1.10, 0.20);
+    leftArm.rotation.set(-0.6, 0.45, -0.3);
     this.operatorGroup.add(leftArm);
 
     const rightArm = new THREE.Mesh(armGeo, this.materials.vest);
-    rightArm.position.set(0.35, 1.10, 0.05);
-    rightArm.rotation.x = -0.35;
-    rightArm.rotation.z = -0.15;
+    rightArm.position.set(0.30, 1.10, 0.12);
+    rightArm.rotation.set(-0.45, -0.2, 0.15);
     this.operatorGroup.add(rightArm);
 
-    // 4. Legs & Kneepads & Boots
+    // 4. Legs, Kneepads with Straps & Combat Boots
     const legGeo = new THREE.BoxGeometry(0.20, 0.65, 0.22);
     const leftLeg = new THREE.Mesh(legGeo, this.materials.armor);
     leftLeg.position.set(-0.16, 0.50, 0);
@@ -284,27 +355,33 @@ export class MenuPreviewScene {
     rightLeg.castShadow = true;
     this.operatorGroup.add(rightLeg);
 
-    // Kneepads
-    const kneeGeo = new THREE.BoxGeometry(0.18, 0.14, 0.06);
-    const leftKnee = new THREE.Mesh(kneeGeo, this.materials.dark);
-    leftKnee.position.set(-0.16, 0.50, 0.12);
-    this.operatorGroup.add(leftKnee);
+    // High-impact knee pads with horizontal elastic strap accents
+    for (let side of [-0.16, 0.16]) {
+      const kneeGeo = new THREE.BoxGeometry(0.18, 0.14, 0.06);
+      const knee = new THREE.Mesh(kneeGeo, this.materials.dark);
+      knee.position.set(side, 0.50, 0.12);
+      this.operatorGroup.add(knee);
 
-    const rightKnee = new THREE.Mesh(kneeGeo, this.materials.dark);
-    rightKnee.position.set(0.16, 0.50, 0.12);
-    this.operatorGroup.add(rightKnee);
+      const strapGeo = new THREE.BoxGeometry(0.21, 0.04, 0.24);
+      const strap = new THREE.Mesh(strapGeo, this.materials.accent);
+      strap.position.set(side, 0.50, 0);
+      this.operatorGroup.add(strap);
+    }
 
-    // Boots
-    const bootGeo = new THREE.BoxGeometry(0.22, 0.18, 0.30);
-    const leftBoot = new THREE.Mesh(bootGeo, this.materials.dark);
-    leftBoot.position.set(-0.16, 0.09, 0.04);
-    this.operatorGroup.add(leftBoot);
+    // Heavy Combat Boots with Outsole Treads
+    for (let side of [-0.16, 0.16]) {
+      const bootGeo = new THREE.BoxGeometry(0.22, 0.18, 0.30);
+      const boot = new THREE.Mesh(bootGeo, this.materials.dark);
+      boot.position.set(side, 0.09, 0.04);
+      this.operatorGroup.add(boot);
 
-    const rightBoot = new THREE.Mesh(bootGeo, this.materials.dark);
-    rightBoot.position.set(0.16, 0.09, 0.04);
-    this.operatorGroup.add(rightBoot);
+      const treadGeo = new THREE.BoxGeometry(0.23, 0.04, 0.32);
+      const tread = new THREE.Mesh(treadGeo, this.materials.vest);
+      tread.position.set(side, 0.02, 0.04);
+      this.operatorGroup.add(tread);
+    }
 
-    // 5. Held Assault Rifle (Breacher-V1)
+    // 5. Held Assault Rifle (Breacher-V1) with Realistic Optics & Mag
     const rifleGroup = new THREE.Group();
     const receiverGeo = new THREE.BoxGeometry(0.08, 0.14, 0.55);
     const receiver = new THREE.Mesh(receiverGeo, this.materials.dark);
@@ -327,8 +404,14 @@ export class MenuPreviewScene {
     holo.position.set(0, 0.10, -0.05);
     rifleGroup.add(holo);
 
-    rifleGroup.position.set(0.18, 1.05, 0.32);
-    rifleGroup.rotation.set(-0.25, 0.35, -0.15);
+    // Holographic sight reticle glass
+    const reticleGeo = new THREE.BoxGeometry(0.04, 0.06, 0.01);
+    const reticle = new THREE.Mesh(reticleGeo, this.materials.visor);
+    reticle.position.set(0, 0.10, -0.02);
+    rifleGroup.add(reticle);
+
+    rifleGroup.position.set(0.12, 1.08, 0.32);
+    rifleGroup.rotation.set(-0.25, 0.25, -0.10);
     this.operatorGroup.add(rifleGroup);
   }
 
@@ -434,9 +517,11 @@ export class MenuPreviewScene {
     this.operatorGroup.rotation.y = this.currentRotationY;
     this.weaponPreviewGroup.rotation.y = this.currentRotationY;
 
-    // Subtle breathing / floating animation
-    const breath = Math.sin(this.animTimer) * 0.015;
+    // Subtle breathing / idle sway animation
+    const breath = Math.sin(this.animTimer) * 0.012;
+    const sway = Math.cos(this.animTimer * 0.5) * 0.008;
     this.operatorGroup.position.y = breath;
+    this.operatorGroup.rotation.z = sway;
     this.weaponPreviewGroup.position.y = breath;
 
     this.renderer.render(this.scene, this.camera);

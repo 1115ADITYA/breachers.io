@@ -322,6 +322,7 @@ export class GameNetwork {
   }
 
   leaveRoom() {
+    this.currentRoomCode = null;
     if (!this.isConnected) return;
     this.send({ type: 'LEAVE_ROOM' });
   }

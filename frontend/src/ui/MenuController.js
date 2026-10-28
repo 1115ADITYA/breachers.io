@@ -48,6 +48,8 @@ export class MenuController {
     this.container = document.getElementById('menu-container');
     this.initDOM();
     this.bindEvents();
+    this.checkBackendHealth();
+    this.healthInterval = setInterval(() => this.checkBackendHealth(), 4000);
     if (this.previewScene) {
       this.updatePreview();
     }
@@ -372,6 +374,117 @@ export class MenuController {
           </div>
         </main>
 
+        <!-- Academic Tech Stack & Architecture Modal -->
+        <div id="academic-modal" class="academic-modal hidden">
+          <div class="academic-modal-card">
+            <div class="academic-modal-header">
+              <div class="academic-header-left">
+                <div class="academic-tag">SYLLABUS &amp; ARCHITECTURE VERIFICATION</div>
+                <h2 class="academic-title">BREACHERS.IO &bull; TECH STACK SPECIFICATION</h2>
+              </div>
+              <button id="btn-academic-modal-close" class="btn-academic-close" type="button" title="Close Modal">✕</button>
+            </div>
+
+            <div class="academic-modal-toolbar">
+              <button id="btn-download-md" class="btn-academic-tool" type="button">
+                <span>📥</span> DOWNLOAD REPORT (.MD)
+              </button>
+              <button id="btn-download-html" class="btn-academic-tool" type="button">
+                <span>📄</span> DOWNLOAD REPORT (.HTML)
+              </button>
+              <button id="btn-share-telegram" class="btn-academic-tool telegram" type="button">
+                <span>✈️</span> SEND TO TELEGRAM
+              </button>
+              <button id="btn-copy-telegram" class="btn-academic-tool" type="button">
+                <span>📋</span> COPY TELEGRAM BRIEFING
+              </button>
+            </div>
+
+            <div id="academic-toast" class="academic-toast hidden"></div>
+
+            <div class="academic-modal-body">
+              <div class="tech-spec-grid">
+                <!-- 1. AWT -->
+                <div class="tech-card">
+                  <div class="tech-card-badge">JAVA 21 SE</div>
+                  <h3 class="tech-card-title">1. AWT (Abstract Window Toolkit)</h3>
+                  <p class="tech-card-desc">
+                    Used for server-side rasterization and procedural graphics rendering.
+                    <code>io.breachers.academic.awt.TacticalRadarRasterizer</code> utilizes <code>java.awt.Graphics2D</code>,
+                    <code>java.awt.image.BufferedImage</code>, <code>Color</code>, and <code>BasicStroke</code> to procedurally
+                    draw 2D tactical radar grids, container blueprints, spawn sectors, and coordinate grids for live matches.
+                  </p>
+                  <div class="tech-card-link-row">
+                    <span class="tech-card-status">STATUS: IMPLEMENTED &amp; ACTIVE</span>
+                    <a href="/academic/radar?map=yard" target="_blank" class="tech-card-link">VIEW LIVE AWT PNG ↗</a>
+                  </div>
+                </div>
+
+                <!-- 2. Swing -->
+                <div class="tech-card">
+                  <div class="tech-card-badge">JAVA 21 SE</div>
+                  <h3 class="tech-card-title">2. Swing Desktop GUI</h3>
+                  <p class="tech-card-desc">
+                    Used for dedicated server administration and live telemetry monitoring.
+                    <code>io.breachers.academic.swing.BreachersServerAdminConsole</code> provides a desktop GUI featuring
+                    <code>javax.swing.JFrame</code>, <code>JTable</code> with <code>DefaultTableModel</code>,
+                    live memory gauges (Heap / Non-Heap), active room participant counters, and admin command triggers.
+                  </p>
+                  <div class="tech-card-link-row">
+                    <span class="tech-card-status">STATUS: STANDALONE &amp; HEADLESS-SAFE</span>
+                  </div>
+                </div>
+
+                <!-- 3. JDBC Database -->
+                <div class="tech-card">
+                  <div class="tech-card-badge">DATA PERSISTENCE</div>
+                  <h3 class="tech-card-title">3. JDBC Database Persistence</h3>
+                  <p class="tech-card-desc">
+                    Used for reliable, ACID-compliant combat match recording and career operator standings.
+                    Implemented via <code>schema.sql</code>, <code>DatabaseConfig</code>, and <code>MatchPersistenceService</code>
+                    with both Spring <code>JdbcTemplate</code> and raw JDBC (<code>java.sql.Connection</code>,
+                    <code>PreparedStatement</code>, <code>ResultSet</code>) over H2 in-memory and PostgreSQL.
+                  </p>
+                  <div class="tech-card-link-row">
+                    <span class="tech-card-status">TABLES: match_history &bull; player_statistics</span>
+                  </div>
+                </div>
+
+                <!-- 4. Servlet Web Application -->
+                <div class="tech-card">
+                  <div class="tech-card-badge">JAKARTA EE</div>
+                  <h3 class="tech-card-title">4. Servlet Web Application</h3>
+                  <p class="tech-card-desc">
+                    Used for server-authoritative combat performance auditing and match history retrieval.
+                    <code>io.breachers.servlet.MatchReportServlet</code> extends standard <code>jakarta.servlet.http.HttpServlet</code>,
+                    overriding <code>doGet()</code> to serve dynamic HTML, raw JSON, markdown, and attachment downloads via
+                    Spring Boot's <code>ServletRegistrationBean</code> at <code>/academic/match-report</code>.
+                  </p>
+                  <div class="tech-card-link-row">
+                    <span class="tech-card-status">ENDPOINT: /academic/match-report</span>
+                    <a href="/academic/match-report" target="_blank" class="tech-card-link">OPEN SERVLET ↗</a>
+                  </div>
+                </div>
+
+                <!-- 5. JSP -->
+                <div class="tech-card">
+                  <div class="tech-card-badge">JAKARTA EE</div>
+                  <h3 class="tech-card-title">5. JSP (JavaServer Pages)</h3>
+                  <p class="tech-card-desc">
+                    Used for server-side dynamic template rendering adhering to the classic MVC Model-2 architecture.
+                    <code>academic-report.jsp</code> demonstrates JSTL tags and Expression Language (EL)
+                    populated by <code>AcademicJspReportServlet</code> via <code>req.setAttribute()</code> and <code>RequestDispatcher.forward()</code>.
+                  </p>
+                  <div class="tech-card-link-row">
+                    <span class="tech-card-status">TEMPLATE: /WEB-INF/jsp/academic-report.jsp</span>
+                    <a href="/academic/jsp-report" target="_blank" class="tech-card-link">OPEN JSP VIEW ↗</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Loading Overlay (Shown during map loading / GLB parsing) -->
         <div id="loading-overlay" class="menu-loading-overlay hidden">
           <div class="loading-modal">
@@ -409,21 +522,91 @@ export class MenuController {
       tab.addEventListener('click', () => {
         const target = tab.getAttribute('data-screen');
         if (target) {
+          if (target === 'HOME' && this.currentScreen === 'LOBBY') {
+            this.currentRoomState = null;
+            if (this.onLeaveRoom) this.onLeaveRoom();
+          }
           this.navigateTo(target);
         }
       });
     });
 
-    // Academic Servlet Report Link
-    const btnReport = document.getElementById('btn-academic-report');
-    if (btnReport) {
-      btnReport.addEventListener('click', () => {
-        const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
-          ? import.meta.env.VITE_API_BASE_URL
-          : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:8081'
-            : '');
-        window.open(`${apiBase}/academic/match-report`, '_blank');
+        // Academic Tech Stack Modal & Tools
+    const academicModal = document.getElementById("academic-modal");
+    const btnReport = document.getElementById("btn-academic-report");
+    const btnCloseAcademic = document.getElementById("btn-academic-modal-close");
+    const btnDownloadMd = document.getElementById("btn-download-md");
+    const btnDownloadHtml = document.getElementById("btn-download-html");
+    const btnShareTelegram = document.getElementById("btn-share-telegram");
+    const btnCopyTelegram = document.getElementById("btn-copy-telegram");
+    const academicToast = document.getElementById("academic-toast");
+
+    const getApiBase = () => {
+      return (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_BASE_URL)
+        ? import.meta.env.VITE_API_BASE_URL
+        : (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+          ? "http://localhost:8081"
+          : "");
+    };
+
+    const showAcademicToast = (msg) => {
+      if (!academicToast) return;
+      academicToast.textContent = msg;
+      academicToast.classList.remove("hidden");
+      setTimeout(() => academicToast.classList.add("hidden"), 3000);
+    };
+
+    if (btnReport && academicModal) {
+      btnReport.addEventListener("click", () => {
+        academicModal.classList.remove("hidden");
+      });
+    }
+
+    if (academicModal && (window.location.hash === "#report" || window.location.search.includes("report=true"))) {
+      academicModal.classList.remove("hidden");
+    }
+
+    if (btnCloseAcademic && academicModal) {
+      btnCloseAcademic.addEventListener("click", () => {
+        academicModal.classList.add("hidden");
+      });
+    }
+
+    if (btnDownloadMd) {
+      btnDownloadMd.addEventListener("click", () => {
+        window.open(`${getApiBase()}/academic/match-report?format=md&download=true`, "_blank");
+      });
+    }
+
+    if (btnDownloadHtml) {
+      btnDownloadHtml.addEventListener("click", () => {
+        window.open(`${getApiBase()}/academic/match-report?download=true`, "_blank");
+      });
+    }
+
+    if (btnShareTelegram) {
+      btnShareTelegram.addEventListener("click", () => {
+        const text = "Breachers.io Technical Architecture Briefing: Complete implementation report covering AWT, Swing, JDBC Database, Servlet Web App, and JSP.";
+        const url = `${getApiBase()}/academic/match-report`;
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`, "_blank");
+      });
+    }
+
+    if (btnCopyTelegram) {
+      btnCopyTelegram.addEventListener("click", () => {
+        const summary = [
+          "🛡 BREACHERS.IO — TECHNICAL ARCHITECTURE SUMMARY",
+          "• AWT: io.breachers.academic.awt.TacticalRadarRasterizer (Graphics2D / BufferedImage)",
+          "• Swing: io.breachers.academic.swing.BreachersServerAdminConsole (JFrame / JTable)",
+          "• JDBC: io.breachers.persistence.MatchPersistenceService (PreparedStatement / H2 / Postgres)",
+          "• Servlet: io.breachers.servlet.MatchReportServlet (/academic/match-report)",
+          "• JSP: /WEB-INF/jsp/academic-report.jsp (JSTL Expression Language)",
+          "Live Report: " + getApiBase() + "/academic/match-report"
+        ].join("\n");
+
+        navigator.clipboard.writeText(summary).then(() => {
+          showAcademicToast("TELEGRAM BRIEFING COPIED TO CLIPBOARD!");
+        });
       });
     }
 
@@ -627,7 +810,8 @@ export class MenuController {
       btnLobbyCopy.addEventListener('click', () => {
         if (this.currentRoomState && this.currentRoomState.roomCode) {
           navigator.clipboard.writeText(this.currentRoomState.roomCode).then(() => {
-            alert('Room Code copied to clipboard: ' + this.currentRoomState.roomCode);
+            btnLobbyCopy.textContent = 'COPIED!';
+            setTimeout(() => { btnLobbyCopy.textContent = 'COPY'; }, 1500);
           });
         }
       });
@@ -869,10 +1053,18 @@ export class MenuController {
    * Update Room Lobby UI when backend broadcasts room state
    */
   updateRoomState(roomState, localPlayerId) {
+    this.setLobbyButtonLoading(false);
+
+    if (!roomState || roomState.roomCode === 'PUBLIC') {
+      this.currentRoomState = null;
+      if (this.currentScreen === 'LOBBY') {
+        this.navigateTo('HOME');
+      }
+      return;
+    }
+
     this.currentRoomState = roomState;
     this.localPlayerId = localPlayerId;
-
-    this.setLobbyButtonLoading(false);
 
     if (this.currentScreen !== 'LOBBY') {
       this.navigateTo('LOBBY');
@@ -990,6 +1182,23 @@ export class MenuController {
 
   showToast(message, durationMs = 3000) {
     this.showErrorBanner(message, durationMs);
+  }
+
+  async checkBackendHealth() {
+    try {
+      const res = await fetch('/api/health');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'UP') {
+          this.setNetworkStatus('connected', 'http://localhost:8081');
+          return true;
+        }
+      }
+      this.setNetworkStatus('disconnected');
+    } catch (e) {
+      this.setNetworkStatus('disconnected');
+    }
+    return false;
   }
 
   setNetworkStatus(status, url = '') {

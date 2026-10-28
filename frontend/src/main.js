@@ -14,6 +14,7 @@ import { MenuController } from './ui/MenuController.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { PhysicsDebugger } from './physics/PhysicsDebugger.js';
 import { LootManager } from './entities/LootManager.js';
+import { sounds } from './audio/SoundEffects.js';
 
 // -------------------------------------------------------------
 // 1. Scene & Renderer Initialization
@@ -284,6 +285,14 @@ const hud = new HUD({
   onReturnToLobby: () => {
     gameNetwork.returnToLobby();
     returnToLobby();
+  },
+  onSensitivityChange: (sens) => {
+    if (player) {
+      player.setMouseSensitivity(sens);
+    }
+  },
+  onVolumeChange: (vol) => {
+    sounds.setVolume(vol);
   }
 });
 
@@ -314,6 +323,7 @@ const menuController = new MenuController({
   },
   onLeaveRoom: () => {
     gameNetwork.leaveRoom();
+    returnToMenu();
   },
   onSetGameMode: (mode) => {
     gameNetwork.setGameMode(mode);
@@ -395,6 +405,10 @@ async function deployIntoMatch(selectedMapId, username) {
       menuController.hideMenu();
       hud.show();
       player.setEnabled(true);
+      const savedSens = parseFloat(localStorage.getItem('breachers_sensitivity'));
+      if (!isNaN(savedSens) && savedSens > 0) {
+        player.setMouseSensitivity(savedSens);
+      }
       player.requestLock();
       hud.updateHealth(100);
       weapon.selectWeapon(0);
@@ -417,7 +431,10 @@ function returnToMenu() {
   if (player) {
     player.setEnabled(false);
   }
+  hud.setPaused(false);
   hud.hide();
+  remotePlayerManager.clear();
+  lootManager.clear();
   menuController.showMenu();
 }
 
@@ -426,7 +443,10 @@ function returnToLobby() {
   if (player) {
     player.setEnabled(false);
   }
+  hud.setPaused(false);
   hud.hide();
+  remotePlayerManager.clear();
+  lootManager.clear();
   menuController.showMenu();
   menuController.navigateTo('LOBBY');
 }
@@ -775,3 +795,11 @@ function animate() {
 
 // Start rendering loop
 animate();
+
+if (typeof window !== 'undefined' && window.location.hash === '#pause') {
+  setTimeout(() => {
+    menuController.hideMenu();
+    hud.show();
+    hud.setPaused(true);
+  }, 300);
+}

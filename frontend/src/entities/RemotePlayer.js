@@ -80,17 +80,46 @@ export class RemotePlayer {
     this.torso.castShadow = true;
     this.group.add(this.torso);
 
-    // 2. Head & Visor
-    const headGeo = new THREE.BoxGeometry(0.3, 0.32, 0.3);
+    // Front Chest Molle Plate Carrier & Pouches
+    const plateGeo = new THREE.BoxGeometry(0.57, 0.46, 0.34);
+    const plate = new THREE.Mesh(plateGeo, darkMat);
+    plate.position.y = 1.12;
+    this.group.add(plate);
+
+    for (let i = -1; i <= 1; i++) {
+      const pouchGeo = new THREE.BoxGeometry(0.11, 0.16, 0.06);
+      const pouch = new THREE.Mesh(pouchGeo, darkMat);
+      pouch.position.set(i * 0.14, 1.02, 0.19);
+      this.group.add(pouch);
+    }
+
+    // 2. Head, Combat Helmet & Visor
+    const headGeo = new THREE.BoxGeometry(0.28, 0.30, 0.28);
     this.head = new THREE.Mesh(headGeo, skinMat);
     this.head.position.y = 1.58;
     this.head.castShadow = true;
     this.group.add(this.head);
 
-    const visorGeo = new THREE.BoxGeometry(0.24, 0.09, 0.08);
+    const helmetGeo = new THREE.BoxGeometry(0.32, 0.20, 0.32);
+    const helmet = new THREE.Mesh(helmetGeo, armorMat);
+    helmet.position.set(0, 1.66, 0);
+    helmet.castShadow = true;
+    this.group.add(helmet);
+
+    const visorGeo = new THREE.BoxGeometry(0.28, 0.08, 0.06);
     const visor = new THREE.Mesh(visorGeo, visorMat);
-    visor.position.set(0, 1.6, 0.15);
+    visor.position.set(0, 1.58, 0.15);
     this.group.add(visor);
+
+    // Comms Earcups
+    const cupGeo = new THREE.BoxGeometry(0.05, 0.10, 0.08);
+    const cupLeft = new THREE.Mesh(cupGeo, darkMat);
+    cupLeft.position.set(-0.16, 1.60, 0);
+    this.group.add(cupLeft);
+
+    const cupRight = new THREE.Mesh(cupGeo, darkMat);
+    cupRight.position.set(0.16, 1.60, 0);
+    this.group.add(cupRight);
 
     // 3. Arms
     const armGeo = new THREE.BoxGeometry(0.15, 0.55, 0.15);
@@ -142,6 +171,14 @@ export class RemotePlayer {
     this.rightLeg.position.set(0.16, 0.38, 0);
     this.rightLeg.castShadow = true;
     this.group.add(this.rightLeg);
+
+    // Tactical Polymer Knee Pads
+    for (let side of [-0.16, 0.16]) {
+      const kneeGeo = new THREE.BoxGeometry(0.19, 0.14, 0.06);
+      const knee = new THREE.Mesh(kneeGeo, armorMat);
+      knee.position.set(side, 0.40, 0.11);
+      this.group.add(knee);
+    }
   }
 
   buildNameplate() {
