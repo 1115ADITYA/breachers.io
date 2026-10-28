@@ -1424,25 +1424,31 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 36px;
-  background: rgba(11, 15, 23, 0.85);
-  border-bottom: 1px solid rgba(249, 115, 22, 0.25);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
-  z-index: 10;
+  height: 60px;
+  padding: 0 24px;
+  background: rgba(8, 12, 18, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  position: relative;
 }
 
 .brand-group {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
 }
 
 .brand-logo {
   font-family: var(--font-display);
-  font-size: 1.8rem;
+  font-size: 1.45rem;
   font-weight: 800;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.12em;
   color: #ffffff;
-  text-shadow: 0 0 16px rgba(249, 115, 22, 0.3);
+  line-height: 1;
 }
 
 .brand-logo .accent {
@@ -1451,125 +1457,171 @@ html, body {
 
 .brand-tagline {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.58rem;
   font-weight: 600;
-  letter-spacing: 0.2em;
-  color: #94a3b8;
-  margin-top: 2px;
+  letter-spacing: 0.15em;
+  color: #64748b;
+  text-transform: uppercase;
 }
 
 .menu-nav-tabs {
   display: flex;
-  gap: 8px;
-  background: rgba(15, 23, 42, 0.7);
-  padding: 4px;
+  align-items: center;
+  gap: 2px;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 3px 4px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .nav-tab {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: #94a3b8;
   font-family: var(--font-display);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.1em;
-  padding: 8px 18px;
+  padding: 6px 14px;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  text-transform: uppercase;
 }
 
 .nav-tab:hover {
-  color: #f8fafc;
+  color: #ffffff;
   background: rgba(255, 255, 255, 0.05);
 }
 
 .nav-tab.active {
   color: #ffffff;
+  background: rgba(249, 115, 22, 0.15);
+  border-color: rgba(249, 115, 22, 0.5);
+  box-shadow: inset 0 0 10px rgba(249, 115, 22, 0.12);
+}
+
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 15%;
+  right: 15%;
+  height: 2px;
   background: #f97316;
-  box-shadow: 0 0 14px rgba(249, 115, 22, 0.45);
+  box-shadow: 0 0 8px #f97316;
+  border-radius: 1px;
+}
+
+.nav-tab-icon {
+  opacity: 0.8;
+  stroke: currentColor;
 }
 
 .topbar-user-panel {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-
-.user-callsign-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(30, 41, 59, 0.8);
-  padding: 6px 14px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.user-role-tag {
-  background: #f97316;
-  color: #ffffff;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  padding: 2px 6px;
-  border-radius: 2px;
-}
-
-.user-name {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #f1f5f9;
-}
-
-.version-tag {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #64748b;
-  letter-spacing: 0.05em;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 /* Server Connection Status Indicator on Menu Topbar */
 .server-status-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(15, 23, 42, 0.7);
-  padding: 6px 12px;
+  gap: 7px;
+  height: 32px;
+  background: rgba(15, 23, 42, 0.65);
+  padding: 0 11px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  color: #94a3b8;
-  cursor: default;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #cbd5e1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.server-status-badge .status-label {
+  white-space: nowrap;
 }
 
 .server-status-badge .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
+  flex-shrink: 0;
   display: inline-block;
 }
 
 .server-status-badge .status-dot.connected {
   background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.7);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.85);
 }
 
 .server-status-badge .status-dot.connecting {
   background: #eab308;
-  box-shadow: 0 0 8px rgba(234, 179, 8, 0.7);
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.85);
   animation: pulse-dot 1.2s infinite ease-in-out;
 }
 
 .server-status-badge .status-dot.disconnected,
 .server-status-badge .status-dot.error {
   background: #ef4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.85);
+}
+
+.user-callsign-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  background: rgba(15, 23, 42, 0.65);
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
+.user-role-tag {
+  background: rgba(249, 115, 22, 0.16);
+  border: 1px solid rgba(249, 115, 22, 0.45);
+  color: #f97316;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.user-name {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: 0.04em;
+}
+
+.version-tag {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: #475569;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+@media (max-width: 1240px) {
+  .version-tag {
+    display: none;
+  }
 }
 
 @keyframes pulse-dot {

@@ -80,7 +80,15 @@ export class MenuController {
             <button class="nav-tab" data-screen="LOADOUT">LOADOUT</button>
             <button class="nav-tab" data-screen="MAPS">MAPS</button>
             <button class="nav-tab" data-screen="SETTINGS">SETTINGS</button>
-            <button class="nav-tab btn-report-pill" id="btn-academic-report" title="View Academic JDBC & Servlet Report">REPORT 📊</button>
+            <button class="nav-tab nav-tab-report" id="btn-academic-report" title="View Academic Tech Stack Specification">
+              <svg class="nav-tab-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+              <span>REPORT</span>
+            </button>
           </nav>
 
           <div class="topbar-user-panel">
@@ -300,7 +308,7 @@ export class MenuController {
                     <label for="setting-server-url">MULTIPLAYER SERVER URL</label>
                     <span class="setting-val-chip" id="label-server-status-chip">CLOUD READY</span>
                   </div>
-                  <input id="setting-server-url" class="setting-input-text" type="text" placeholder="wss://breachers-backend.onrender.com/ws/game" value="${this.customServerUrl}" autocomplete="off" />
+                  <input id="setting-server-url" class="setting-input-text" type="text" placeholder="wss://breachers-io.onrender.com/ws/game" value="${this.customServerUrl}" autocomplete="off" />
                   <span class="setting-subtext">Backend WebSocket URL. Leave empty to use default auto-detected backend.</span>
                 </div>
               </div>
@@ -546,7 +554,7 @@ export class MenuController {
         ? import.meta.env.VITE_API_BASE_URL
         : (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
           ? "http://localhost:8081"
-          : "");
+          : "https://breachers-io.onrender.com");
     };
 
     const showAcademicToast = (msg) => {
@@ -878,7 +886,10 @@ export class MenuController {
     const topRole = document.getElementById('topbar-role-tag');
     if (title) title.textContent = op.callsign || op.name.toUpperCase();
     if (badge) badge.textContent = `OPERATIVE PROFILE • ${op.role.toUpperCase()}`;
-    if (topRole) topRole.textContent = op.role.toUpperCase();
+    if (topRole) {
+      const shortRole = op.role ? (op.role.split(' ').pop() || op.role).toUpperCase() : 'ASSAULT';
+      topRole.textContent = shortRole;
+    }
   }
 
   updateHomeMapDisplay() {
@@ -1185,18 +1196,23 @@ export class MenuController {
   }
 
   async checkBackendHealth() {
+    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
+      ? import.meta.env.VITE_API_BASE_URL
+      : (isLocal ? 'http://localhost:8081' : 'https://breachers-io.onrender.com');
+
     try {
-      const res = await fetch('/api/health');
+      const res = await fetch(`${apiBase}/api/health`);
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'UP') {
-          this.setNetworkStatus('connected', 'http://localhost:8081');
+          this.setNetworkStatus('connected', apiBase);
           return true;
         }
       }
-      this.setNetworkStatus('disconnected');
+      this.setNetworkStatus('disconnected', apiBase);
     } catch (e) {
-      this.setNetworkStatus('disconnected');
+      this.setNetworkStatus('disconnected', apiBase);
     }
     return false;
   }
@@ -1216,7 +1232,7 @@ export class MenuController {
       if (badge) badge.title = `Connecting to: ${url}`;
     } else {
       label.textContent = 'SERVER: OFFLINE';
-      if (badge) badge.title = `Offline (${url})`;
+      if (badge) badge.title = url ? `Offline (${url})` : 'Server Unreachable (Spinning up on Render...)';
     }
   }
 

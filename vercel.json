@@ -5,6 +5,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/:match*",
+      "destination": "https://breachers-io.onrender.com/api/:match*"
+    },
+    {
+      "source": "/academic/:match*",
+      "destination": "https://breachers-io.onrender.com/academic/:match*"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

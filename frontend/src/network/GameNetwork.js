@@ -58,7 +58,7 @@ export class GameNetwork {
       if (!isLocal) {
         // Hosted on Vercel or cloud provider: default to live Render backend
         console.info('[GameNetwork] Running on production host without explicit VITE_WS_URL. Falling back to default cloud backend.');
-        return 'wss://breachers-backend.onrender.com/ws/game';
+        return 'wss://breachers-io.onrender.com/ws/game';
       }
 
       // Local development fallback
